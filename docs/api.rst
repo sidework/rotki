@@ -214,7 +214,7 @@ Handling user creation, sign-in, log-out and querying
 
    :resjson object result: For succesful requests, result contains the currently connected exchanges,and the user's settings. For details on the user settings refer to the `Getting or modifying settings`_ section.
    :statuscode 200: Logged in succesfully
-   :statuscode 300: Possibility of syncing exists and the login was sent with sync_approval set to ``"unknown"``. Consumer of api must resend with ``"yes"`` or ``"no"``.
+   :statuscode 300: Possibility of syncing exists and the login was sent with sync_approval set to ``"unknown"``. Consumer of api must resend with ``"yes"`` or ``"no"``. In this case the result will contain an object with a payload for the message under the ``result`` key and the message under the ``message`` key. The payload has the following keys: ``local_size``, ``remote_size``, ``local_last_modified``, ``remote_last_modified``.
    :statuscode 400: Provided JSON is in some way malformed
    :statuscode 401: Provided password is wrong for the user or some other authentication error.
    :statuscode 409: Another user is already logged in. User does not exist. There was a fatal error during the upgrade of the DB. Permission error while trying to access the directory where Rotki saves data.
@@ -288,13 +288,13 @@ Handling user creation, sign-in, log-out and querying
       }
 
    :resjson bool result: The result field in this response is a simple boolean value indicating success or failure.
-   :statuscode 200: API key/secret set succesfully
+   :statuscode 200: API key/secret set successfully
    :statuscode 400: Provided JSON is in some way malformed. For example invalid API key format
    :statuscode 401: Provided API key/secret does not authenticate.
    :statuscode 409: User is not logged in, or user does not exist
    :statuscode 500: Internal Rotki error
 
-.. http:delete:: /api/(version)/users/(username)/premium
+.. http:delete:: /api/(version)/premium
 
    By doing a ``DELETE`` at this endpoint you can delete the premium api key and secret pair for the logged-in user.
 
@@ -302,7 +302,7 @@ Handling user creation, sign-in, log-out and querying
 
    .. http:example:: curl wget httpie python-requests
 
-      DELETE /api/1/users/john/premium HTTP/1.1
+      DELETE /api/1/premium HTTP/1.1
       Host: localhost:5042
 
    **Example Response**:
@@ -319,9 +319,48 @@ Handling user creation, sign-in, log-out and querying
 
    :resjson bool result: The result field in this response is a simple boolean value indicating success or failure.
    :statuscode 200: API key/secret deleted succesfully
-   :statuscode 400: Provided call is in some way malformed. For example a user who is not logged in has been specified.
+   :statuscode 400: Provided call is in some way malformed.
    :statuscode 409: User is not logged in, or user does not exist, or db operation error
    :statuscode 500: Internal Rotki error
+
+.. http:put:: /api/(version)/premium/sync
+
+   By doing a ``PUT`` at this endpoint you can backup or restore the database for the logged-in user using premium sync.
+
+   .. note::
+      This endpoint can also be queried asynchronously by using ``"async_query": true``.
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      DELETE /api/1/premium/sync HTTP/1.1
+      Host: localhost:5042
+
+      {
+          "action": "download"
+      }
+
+   :reqjson string action: The action to perform. Can only be one of ``"upload"`` or ``"download"``.
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": true,
+          "message": ""
+      }
+
+   :resjson bool result: The result field in this response is a simple boolean value indicating success or failure.
+   :statuscode 200: API key/secret deleted successfully
+   :statuscode 400: Provided call is in some way malformed.
+   :statuscode 401: The user does not have premium access.
+   :statuscode 500: Internal Rotki error
+   :statuscode 502: The external premium service could not be reached or returned unexpected response.
 
 Modify user password
 ========================
@@ -691,11 +730,11 @@ Query the result of an ongoing backend task
           "result": {
               "status": "completed",
               "outcome": {
-                  "per_account": {"BTC": {
+                  "per_account": {"BTC": { "standalone": {
                       "1Ec9S8KSw4UXXhqkoG3ZD31yjtModULKGg": {
                               "amount": "10",
                               "usd_value": "70500.15"
-                          }
+                          }}
                   }},
                   "totals": {"BTC": {"amount": "10", "usd_value": "70500.15"}}
               }
@@ -1389,17 +1428,41 @@ Querying onchain balances
       {
           "result": {
               "per_account": {
-                  "BTC": { "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
-                       "amount": "0.5", "usd_value": "3770.075"
-                   }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
-                       "amount": "0.5", "usd_value": "3770.075"
-                   }},
+                  "BTC": {
+                      "standalone": {
+                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                      }},
+                      "xpubs": [{
+                              "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+			      "derivation_path": "m/0/0",
+			      "addresses": {
+                                  "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  },
+                                  "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  }
+                          }}, {
+                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
+			      "derivation_path": "m",
+			      "addresses": {
+				  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  },
+				  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  }
+                          }}]
+                   },
                    "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
                        "assets": {
                            "ETH": {"amount": "10", "usd_value": "1650.53"},
                            "DAI": {"amount": "15", "usd_value": "15.21"}
                        },
-                       "total_usd_value": "1665.74",
+                       "total_usd_value": "1665.74"
                   }}
               },
               "totals": {
@@ -1411,7 +1474,7 @@ Querying onchain balances
           "message": ""
       }
 
-   :resjson object per_account: The blockchain balances per account per asset. Each element of this object has an asset as its key. Then each asset has an address for that blockchain as its key and each address an object with the following keys: ``"amount"`` for the amount stored in the asset in the address and ``"usd_value"`` for the equivalent $ value as of the request.
+   :resjson object per_account: The blockchain balances per account per asset. Each element of this object has an asset as its key. Then each asset has an address for that blockchain as its key and each address an object with the following keys: ``"amount"`` for the amount stored in the asset in the address and ``"usd_value"`` for the equivalent $ value as of the request. Ethereum accounts have a mapping of tokens owned by each account. BTC accounts are separated in standalone accounts and in accounts that have been derived from an xpub. The xpub ones are listed in a list under the ``"xpubs"`` key. Each entry has the xpub, the derivation path and the list of addresses and their balances.
    :resjson object total: The blockchain balances in total per asset. The format is the same as defined `here <balances_result_>`_.
 
    :statuscode 200: Balances succesfully queried.
@@ -2437,7 +2500,8 @@ Querying periodic data
               "last_balance_save": 1572345881,
               "eth_node_connection": true,
               "history_process_start_ts": 1572325881,
-              "history_process_current_ts": 1572345881
+              "history_process_current_ts": 1572345881,
+              "last_data_upload_ts": 0
           }
           "message": ""
       }
@@ -2487,9 +2551,71 @@ Getting blockchain account data
       }
 
    :resjson list result: A list with the account data details
-   :resjsonarr string address: The address, which is the unique identifier of each account
+   :resjsonarr string address: The address, which is the unique identifier of each account. For BTC blockchain query and if the entry is an xpub then this attribute is misssing.
+   :resjsonarr string xpub: The extended public key. This attribute only exists for BTC blockchain query and if the entry is an xpub
    :resjsonarr string label: The label to describe the account. Can also be null.
    :resjsonarr list tags: A list of tags associated with the account. Can also be null.
+
+   :statuscode 200: Account data succesfully queried.
+   :statuscode 409: User is not logged in.
+   :statuscode 500: Internal Rotki error
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      GET /api/1/blockchains/BTC/ HTTP/1.1
+      Host: localhost:5042
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result" : {
+	      "standalone": [{
+                  "address": "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5",
+                  "label": null,
+                  "tags": ["private"],
+		  }, {
+                  "address": "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra",
+                  "label": "some label",
+                  "tags": null,
+	      }],
+	      "xpubs": [{
+	          "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+		  "derivation_path": "m/0/0",
+		  "label": "ledger xpub",
+		  "tags": ["super secret", "awesome"],
+		  "addresses": [{
+		      "address": "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r",
+		      "label": "derived address",
+		      "tags": ["super secret", "awesome", "derived"]
+		      }, {
+		      "address": "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT",
+		      "label": null,
+		      "tags": null
+		      }]
+		  }, {
+                  "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
+		  "derivation_path": null,
+	          "label": "some label",
+		  "tags": null,
+		  "addresses": null,
+	      }]
+	  },
+           "message": "",
+      }
+
+   :resjson list result: An object with the account data details. Has two attributes. ``"standalone"`` for standalone addresses. That follows the same response format as above. And ``"xpub"`` for bitcoin xpubs. Below we will see the format of the xpub response.
+   :resjsonarr string xpub: The extended public key string
+   :resjsonarr string derivation_path: [Optional] If existing this is the derivation path from which to start deriving accounts from the xpub.
+   :resjsonarr string label: [Optional] The label to describe the xpub. Can also be null.
+   :resjsonarr list tags: [Optional] A list of tags associated with the account. Can also be null.
+   :resjsonarr list addresses: [Optional] A list of address objects  derived by the account. Can also be null. The attributes of each object are as seen in the previous response.
 
    :statuscode 200: Account data succesfully queried.
    :statuscode 409: User is not logged in.
@@ -3194,6 +3320,12 @@ Getting Aave historical data
 		          "amount": "0.523",
 			  "usd_value": "0.0253"
 		      }
+		  },
+		  "total_lost": {
+		      "WBTC": {
+		          "amount": "0.3212",
+			  "usd_value": "3560.32"
+		      }
 		  }
               },
               "0x1D7D7Eb7035B42F39f200AA3af8a65BC3475A237": {
@@ -3209,27 +3341,39 @@ Getting Aave historical data
                       "tx_hash": "0x618fc9542890a2f58ab20a3c12d173b3638af11fda813e61788e242b4fc9a755",
 		      "log_index": 1
                   }],
-                  "total_earned": {
+                  "total_earned_interest": {
 		      "BAT": {
 		          "amount": "0.9482",
 			  "usd_value": "0.2312"
 		      }
-		  }
+		  },
+		  "total_lost": {},
+		  "total_earned_liquidations": {},
               }
           },
           "message": ""
       }
 
    :resjson object result: A mapping of accounts to the Aave history report of each account. If an account is not in the mapping Rotki does not see anything ever deposited in Aave for it.
-   :resjson object events: A list of deposits/withdrawals/interest payments to/from Aave for each account.
-   :resjson object total_earned: A mapping of asset identifier to total earned (amount + usd_value mapping) for each asset. The total earned is essentially the sum of all interest payments plus the difference between ``balanceOf`` and ``principalBalanceOf`` for each asset.
-   :resjsonarr string event_type: The type of Aave event. Can be "deposit", "withdrawal" or "interest".
-   :resjsonarr string asset: The asset that this event is about. This can only be an underlying asset of an aToken.
-   :resjsonarr string value: The value of the asset for the event. The rate is the asset/USD rate at the events's timestamp.
+   :resjson object events: A list of AaveEvents. Check the fields below for the potential values.
+   :resjsonarr string event_type: The type of Aave event. Can be ``"deposit"``, ``"withdrawal"``, ``"interest"``, ``"borrow"``, ``"repay"`` and ``"liquidation"``.
    :resjsonarr int timestamp: The unix timestamp at which the event occured.
-   :resjsonarr int block_number: The block number at which the event occured.
-   :resjsonarr int tx_hash: The transaction hash of the event.
-   :resjsonarr int log_index: The log_index of the event
+   :resjsonarr int block_number: The block number at which the event occured. If the graph is queried this is unfortunately always 0, so UI should not show it.
+   :resjsonarr string tx_hash: The transaction hash of the event.
+   :resjsonarr int log_index: The log_index of the event. For the graph this is indeed a unique number in combination with the transaction hash, but it's unfortunately not the log index.
+   :resjsonarr string asset: This attribute appears in all event types except for ``"liquidation"``. It shows the asset that this event is about. This can only be an underlying asset of an aToken.
+   :resjsonarr object value: This attribute appears in all event types except for ``"liquidation"``. The value (amount and usd_value mapping) of the asset for the event. The rate is the asset/USD rate at the events's timestamp.
+   :resjsonarr string borrow_rate_mode: This attribute appears only in ``"borrow"`` events. Signifies the type of borrow. Can be either ``"stable"`` or ``"variable"``.
+   :resjsonarr string borrow_rate: This attribute appears only in ``"borrow"`` events. Shows the rate at which the asset was borrowed. It's a floating point number. For example ``"0.155434"`` would means 15.5434% interest rate for this borrowing.
+   :resjsonarr string accrued_borrow_interest: This attribute appears only in ``"borrow"`` events. Its a floating point number showing the acrrued interest for borrowing the asset so far
+   :resjsonarr  object fee: This attribute appears only in ``"repay"`` events. The value (amount and usd_value mapping) of the fee for the repayment. The rate is the asset/USD rate at the events's timestamp.
+   :resjsonarr string collateral_asset: This attribute appears only in ``"liquidation"`` events. It shows the collateral asset that the user loses due to liquidation.
+   :resjsonarr string collateral_balance: This attribute appears only in ``"liquidation"`` events. It shows the value (amount and usd_value mapping) of the collateral asset that the user loses due to liquidation. The rate is the asset/USD rate at the events's timestamp.
+   :resjsonarr string principal_asset: This attribute appears only in ``"liquidation"`` events. It shows the principal debt asset that is repaid due to the liquidation due to liquidation.
+   :resjsonarr string principal_balance: This attribute appears only in ``"liquidation"`` events. It shows the value (amount and usd_value mapping) of the principal asset whose debt is repaid due to liquidation. The rate is the asset/USD rate at the events's timestamp.
+   :resjson object total_earned_interest: A mapping of asset identifier to total earned (amount + usd_value mapping) for each asset's interest earnings. The total earned is essentially the sum of all interest payments plus the difference between ``balanceOf`` and ``principalBalanceOf`` for each asset.
+   :resjson object total_lost: A mapping of asset identifier to total lost (amount + usd_value mapping) for each asset. The total losst for each asset is essentially the accrued interest from borrowing and the collateral lost from liquidations.
+   :resjson object total_earned_liquidations: A mapping of asset identifier to total earned (amount + usd_value mapping) for each repaid assets during liquidations.
 
    :statuscode 200: Aave history succesfully queried.
    :statuscode 409: No user is currently logged in or currently logged in user does not have a premium subscription. Or aave module is not activated.
@@ -3950,11 +4094,35 @@ Adding blockchain accounts
       {
           "result": {
               "per_account": {
-                  "BTC": { "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
-                       "amount": "0.5", "usd_value": "3770.075"
-                   }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
-                       "amount": "0.5", "usd_value": "3770.075"
-                   }},
+                  "BTC": {
+                      "standalone": {
+                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                      }},
+                      "xpubs": [{
+                              "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+			      "derivation_path": "m/0/0",
+			      "addresses": {
+                                  "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  },
+                                  "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  }
+                          }}, {
+                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
+			      "derivation_path": "m",
+			      "addresses": {
+				  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  },
+				  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  }
+                          }}]
+                   },
                    "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
                        "assets": {
                            "ETH": {"amount": "10", "usd_value": "1755.53"},
@@ -3979,6 +4147,183 @@ Adding blockchain accounts
    :statuscode 409: User is not logged in. Some error occured when re-querying the balances after addition. Provided tags do not exist. Check message for details.
    :statuscode 500: Internal Rotki error
    :statuscode 502: Error occured with some external service query such as Etherscan. Check message for details.
+
+
+Adding BTC xpubs
+========================
+
+.. http:put:: /api/(version)/blockchains/BTC/xpub
+
+   .. note::
+      This endpoint can also be queried asynchronously by using ``"async_query": true``
+
+   Doing a PUT on the BTC xpubs endpoint will add an extended public key for bitcoin mainnet. All derived addresses that have ever had a transaction from this xpub and derivation path will be found and added for tracking in rotki.
+
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      PUT /api/1/blockchains/BTC/xpub HTTP/1.1
+      Host: localhost:5042
+
+      {
+          "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+          "derivation_path": "m/0/0",
+          "label": "my electrum xpub",
+          "tags": ["public", "old"]
+      }
+
+   :reqjson string xpub: The extended public key to add
+   :reqjsonarr string derivation_path: The derivation path from which to start deriving addresses relative to the xpub.
+   :reqjsonarr string[optional] label: An optional label to describe the new extended public key
+   :reqjsonarr list[optional] tags: An optional list of tags to attach to the xpub
+   :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": {
+              "per_account": {
+                  "BTC": {
+                      "standalone": {
+                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                      }},
+                      "xpubs": [{
+                              "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+			      "derivation_path": "m/0/0",
+			      "addresses": {
+                                  "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  },
+                                  "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  }
+                          }}, {
+                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
+			      "derivation_path": "m",
+			      "addresses": {
+				  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  },
+				  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  }
+                          }}]
+                   },
+                   "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
+                       "assets": {
+                           "ETH": {"amount": "10", "usd_value": "1755.53"},
+                           "GNO": {"amount": "1", "usd_value": "50"},
+                           "RDN": {"amount": "1", "usd_value": "1.5"}
+                       },
+                       "total_usd_value": "1807.03",
+                  }}
+              },
+              "totals": {
+                  "BTC": {"amount": "1", "usd_value": "7540.15"},
+                  "ETH": {"amount": "10", "usd_value": "1650.53"},
+                  "RDN": {"amount": "1", "usd_value": "1.5"},
+                  "GNO": {"amount": "1", "usd_value": "50"}
+          },
+          "message": ""
+      }
+
+   :resjson object result: An object containing the ``"per_account"`` and ``"totals"`` keys as also defined `here <blockchain_balances_result_>`_.
+   :statuscode 200: Xpub succesfully added
+   :statuscode 400: Provided JSON or data is in some way malformed. The accounts to add contained invalid addresses or were an empty list.
+   :statuscode 409: User is not logged in. Some error occured when re-querying the balances after addition. Provided tags do not exist. Check message for details.
+   :statuscode 500: Internal Rotki error
+   :statuscode 502: Error occured with some external service query such as blockcypher. Check message for details.
+
+Deleting BTC xpubs
+========================
+
+.. http:delete:: /api/(version)/blockchains/BTC/xpub
+
+   .. note::
+      This endpoint can also be queried asynchronously by using ``"async_query": true``
+
+   Doing a DELETE on the BTC xpubs endpoint will remove an extended public key for bitcoin mainnet. All derived addresses from the xpub will also be deleted.
+
+
+   **Example Request**:
+
+   .. http:example:: curl wget httpie python-requests
+
+      DELETE /api/1/blockchains/BTC/xpub HTTP/1.1
+      Host: localhost:5042
+
+      {
+          "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+          "derivation_path": "m/0/0",
+      }
+
+   :reqjson string xpub: The extended public key to remove
+   :reqjsonarr string derivation_path: The derivation path from which addresses were derived.
+   :reqjson bool async_query: Boolean denoting whether this is an asynchronous query or not
+
+   **Example Response**:
+
+   .. sourcecode:: http
+
+      HTTP/1.1 200 OK
+      Content-Type: application/json
+
+      {
+          "result": {
+              "per_account": {
+                  "BTC": {
+                      "standalone": {
+                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                      }},
+                      "xpubs": [{
+                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
+			      "derivation_path": "m",
+			      "addresses": {
+				  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  },
+				  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  }
+                          }}]
+                   },
+                   "ETH": { "0x78b0AD50E768D2376C6BA7de33F426ecE4e03e0B": {
+                       "assets": {
+                           "ETH": {"amount": "10", "usd_value": "1755.53"},
+                           "GNO": {"amount": "1", "usd_value": "50"},
+                           "RDN": {"amount": "1", "usd_value": "1.5"}
+                       },
+                       "total_usd_value": "1807.03",
+                  }}
+              },
+              "totals": {
+                  "BTC": {"amount": "1", "usd_value": "7540.15"},
+                  "ETH": {"amount": "10", "usd_value": "1650.53"},
+                  "RDN": {"amount": "1", "usd_value": "1.5"},
+                  "GNO": {"amount": "1", "usd_value": "50"}
+          },
+          "message": ""
+      }
+
+   :resjson object result: An object containing the ``"per_account"`` and ``"totals"`` keys as also defined `here <blockchain_balances_result_>`_.
+   :statuscode 200: Xpub succesfully removed
+   :statuscode 400: Provided JSON or data is in some way malformed. The accounts to add contained invalid addresses or were an empty list.
+   :statuscode 409: User is not logged in. Some error occured when re-querying the balances after addition. Check message for details.
+   :statuscode 500: Internal Rotki error
+   :statuscode 502: Error occured with some external service query such as blockcypher. Check message for details.
 
 Editing blockchain account data
 =================================
@@ -4032,7 +4377,7 @@ Editing blockchain account data
            "message": "",
       }
 
-   :resjson list result: A list containing the blockchain account data as also defined `here <blockchain_accounts_result_>`_.
+   :resjson list result: A list containing the blockchain account data as also defined `here <blockchain_accounts_result_>`_. Result is different depending on the blockchain type.
 
    :statuscode 200: Accounts succesfully edited
    :statuscode 400: Provided JSON or data is in some way malformed. Given list to edit is empty.
@@ -4073,12 +4418,35 @@ Removing blockchain accounts
       {
           "result": {
               "per_account": {
-                  "BTC": { "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
-                       "amount": "0.5", "usd_value": "3770.075"
-                   }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
-                       "amount": "0.5", "usd_value": "3770.075"
-                   }},
-              },
+                  "BTC": {
+                      "standalone": {
+                          "3Kb9QPcTUJKspzjQFBppfXRcWew6hyDAPb": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                          }, "33hjmoU9XjEz8aLxf44FNGB8TdrLkAVBBo": {
+                              "amount": "0.5", "usd_value": "3770.075"
+                      }},
+                      "xpubs": [{
+                              "xpub": "xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk",
+			      "derivation_path": "m/0/0",
+			      "addresses": {
+                                  "1LZypJUwJJRdfdndwvDmtAjrVYaHko136r": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  },
+                                  "1AMrsvqsJzDq25QnaJzX5BzEvdqQ8T6MkT": {
+                                      "amount": "0.5", "usd_value": "3770.075"
+                                  }
+                          }}, {
+                              "xpub": "zpub6quTRdxqWmerHdiWVKZdLMp9FY641F1F171gfT2RS4D1FyHnutwFSMiab58Nbsdu4fXBaFwpy5xyGnKZ8d6xn2j4r4yNmQ3Yp3yDDxQUo3q",
+			      "derivation_path": "m",
+			      "addresses": {
+				  "bc1qc3qcxs025ka9l6qn0q5cyvmnpwrqw2z49qwrx5": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  },
+				  "bc1qr4r8vryfzexvhjrx5fh5uj0s2ead8awpqspqra": {
+				      "amount": "0.5", "usd_value": "3770.075"
+				  }
+                          }}]
+              }},
               "totals": {
                   "BTC": {"amount": "1", "usd_value": "7540.15"},
               }

@@ -2,6 +2,105 @@
 Changelog
 =========
 
+* :bug:`1635` Application will now continue running when changing log level on Windows.
+* :feature:`1642` Force pull/push buttons for premium sync are now accessible in the floppy disk icon on the toolbar.
+* :bug:`1638` Balances displayed in dashboard cards should now be properly sorted by value in descending order.
+* :bug:`-` If the DB has not been uploaded in this run of Rotki, the last upload time indicator now shows the last time data was uploaded and not "Never".
+* :bug:`1641` Rotki only accepts derivation paths in the form of m/X/Y/Z... where ``X``, ``Y`` and ``Z`` are integers. Anything else is not processable and invalid. We now check that the given path is valid and reject the addition if not. Also the DB is upgraded and any xpubs with such invalid derivation path are automatically deleted.
+* :bug:`1637` Loading ethereum transactions on the UI should work properly again now
+
+* :release:`1.8.2 <2020-10-27>`
+* :bug:`1631` Fetching poloniex trades will now work properly again after they changed their trade date time format.
+* :feature:`-` Support the following new MakerDAO vault collateral types: ``ETH-B``, ``USDT-A``, ``MANA-A``, ``PAXUSD-A``, ``COMP-A``, ``LRC-A``, ``LINK-A``.
+* :feature:`1616` Support https://harvest.finance/ stablecoin vaults balance queries and claimable FARM token balance display.
+* :feature:`1456` Take balances shown in DeFi overview into account in the total netvalue worth and in the dashboard and per account ethereum balances table.
+* :feature:`1561` The application will now only log critical errors by default, allowing the user to change that on the log in screen.
+* :feature:`1562` Add support for P2SH-P2WPKH and WPKH type of xPubs. User can now choose the xpub type when inputting from the UI.
+* :bug:`1583` Users will not be taken to the reveal button when pressing tab in a form with a revealable input.
+* :feature:`1122` Users can now import their metamask account addresses to rotki.
+* :feature:`1458` Aave borrowing and liquidations are now also taken into account and displayed to the user. Also for historical aave queries a subgraph is used instead of blockchain event querying which makes the entire process considerably faster.
+* :feature:`1194` Premium users can now manually backup or restore their databases.
+* :bug:`1596` If the local DB of a premium user is both newer and bigger size than the remote, then do not ask the user whether to pull the remote DB or not.
+* :feature:`1288` Users can now see the last premium database sync date in the save indicator when database sync is enabled.
+* :bug:`1571` New user account with new premium keys will no longer fail to create an account the first time if premium keys are given at account creation time.
+* :bug:`1559` Users can now properly refresh the blockchain balances in the Accounts & Balances page.
+* :bug:`1564` Blockchain balances are now properly sorted by fiat currency value.
+* :bug:`1558` Deleting an xPub that has no used derived addresses is now possible.
+* :feature:`1560` Users can now see the total value of the accounts under an xpub.
+* :feature:`-` Added support for the following tokens:
+
+  - `Based Money ($BASED) <https://www.coingecko.com/en/coins/based-money>`__
+  - `Filecoin (FIL) <https://www.coingecko.com/en/coins/filecoin>`__
+  - `DefiPulse Index (DPI) <https://www.coingecko.com/en/coins/defipulse-index>`__
+  - `renBTC (renBTC) <https://www.coingecko.com/en/coins/renbtc>`__
+  - `Jarvis Reward Token (JRT) <https://www.coingecko.com/en/coins/jarvis-reward-token>`__
+  - `Alpha Finance (ALPHA) <https://www.coingecko.com/en/coins/alpha-finance>`__
+  - `Near Protocol (NEAR) <https://www.coingecko.com/en/coins/near>`__
+  - `Venus (XVS) <https://www.coingecko.com/en/coins/venus>`__
+  - `3x Short Cardano Token (ADABEAR) <https://www.coingecko.com/en/coins/3x-short-cardano-token>`__
+  - `3x Long Cardano Token (ADABULL) <https://www.coingecko.com/en/coins/3x-long-cardano-token>`__
+  - `DefiChain (DFI) <https://www.coingecko.com/en/coins/defichain>`__
+  - `Ducato Protocol Token (DUCATO) <https://www.coingecko.com/en/coins/ducato-protocol-token>`__
+  - `Consensus Cell Network (ECELL) <https://www.coingecko.com/en/coins/consensus-cell-network>`__
+  - `Maro (MARO) <https://www.coingecko.com/en/coins/maro>`__
+  - `Harvest Finance (FARM) <https://www.coingecko.com/en/coins/harvest-finance>`__
+  - `PieDAO DOUGH v2 (DOUGH) <https://www.coingecko.com/en/coins/piedao-dough-v2>`__
+  - `All Harvest finance stablecoin vault fAssets <https://github.com/harvest-finance/harvest#vaults>`__
+  - `PickleToken (PICKLE) <https://www.coingecko.com/en/coins/pickle-finance>`__
+  - `Curve.fi DAI/USDC/USDT Pool (3Crv) <https://etherscan.io/address/0x6c3f90f043a72fa612cbac8115ee7e52bde6e490>`__
+  - `Curve.fi GUSD/3Crv (gusd3CRV) <https://etherscan.io/address/0xD2967f45c4f384DEEa880F807Be904762a3DeA07>`__
+  - `Yearn Gemini USD vault (yGUSD) <https://etherscan.io/address/0xec0d8D3ED5477106c6D4ea27D90a60e594693C90>`__
+  - `yearn Curve.fi DAI/USDC/USDT vault (y3Crv) <https://etherscan.io/address/0x9cA85572E6A3EbF24dEDd195623F188735A5179f>`__
+  - `mStable USD (mUSD) <https://www.coingecko.com/en/coins/mstable-usd>`__
+  - `Aave Interest bearing Aave Token (aAAVE) <https://etherscan.io/address/0xba3d9687cf50fe253cd2e1cfeede1d6787344ed5>`__
+  - `Bidao (BID) <https://www.coingecko.com/en/coins/bidao>`__
+  - `Audius (AUDIO) <https://www.coingecko.com/en/coins/audius>`__
+  - `Easyfi (EASY) <https://www.coingecko.com/en/coins/easyfi>`__
+  - `Binance leveraged token FILDOWN (FILDOWN) <https://www.cryptocompare.com/coins/fildown>`__
+  - `Binance leveraged token FILUP (FILUP) <https://www.cryptocompare.com/coins/filup/>`__
+  - `Binance leveraged token YFIDOWN (YFIDOWN) <https://www.cryptocompare.com/coins/yfidown>`__
+  - `Binance leveraged token YFIUP (YFIUP) <https://www.cryptocompare.com/coins/yfiup/>`__
+  - `Injective Token (INJ) <https://www.coingecko.com/en/coins/injective-protocol>`__
+  - `Celo dollar (CUSD) <https://www.cryptocompare.com/coins/celousd/overview>`__
+  - `Elastos (ELA) <https://www.coingecko.com/en/coins/elastos>`__
+  - `KardiaChain Token (KAI) <https://www.coingecko.com/en/coins/kardiachain>`__
+
+* :release:`1.8.1 <2020-10-05>`
+* :feature:`1532` Users can now easily open links to external block explorers for their tracked blockchain addresses.
+* :bug:`1530` Truncation of account addresses will now dynamically change based on the screen width.
+* :feature:`224` Coingecko is now used for current price queries if cryptocompare fails. This will allow more tokens to be displayed.
+* :feature:`1523` Trailing or leading whitespace in pasted addresses and api keys will now be properly removed.
+* :feature:`1501` Assets that have been added to the ignore list will now be hidden from the dashboard.
+* :bug:`1533` Premium Yearn vaults users should now be able to see a USD PNL per vault they used during the tax report.
+* :bug:`1527` Premium Compound users should no longer get an exception during tax report.
+* :feature:`808` Bitcoin xpubs are now supported. Given an xpub rotki derives all addresses locally and tracks those that have been used without compromising user privacy.
+
+* :feature:`-` Added support for the following tokens:
+
+  - `Compound Uni (cUNI) <https://www.coingecko.com/en/coins/compound-uniswap>`__
+  - `YAMv3 (YAM) <https://www.coingecko.com/en/coins/yam>`__
+  - `Avalanche (AVAX) <https://www.coingecko.com/en/coins/avalanche>`__
+  - `BakeryToken (BAKE) <https://www.coingecko.com/en/coins/bakerytoken>`__
+  - `Burger Swap (BURGER) <https://www.coingecko.com/en/coins/burger-swap>`__
+  - `Pancake Swap (CAKE) <https://www.coingecko.com/en/coins/pancakeswap>`__
+  - `Flamingo Finance (FLM) <https://www.coingecko.com/en/coins/flamingo-finance>`__
+  - `Helium (HNT) <https://www.coingecko.com/en/coins/helium>`__
+  - `New Bitshares (NBS) <https://www.coingecko.com/en/coins/new-bitshares>`__
+  - `Sun Token (SUN) <https://www.coingecko.com/en/coins/sun-token>`__
+  - `CBDao (BREE) <https://www.coingecko.com/en/coins/cbdao>`__
+  - `Concentrated Voting Power (CVP) <https://www.coingecko.com/en/coins/powerpool-concentrated-voting-power>`__
+  - `dHedge DAO Token (DHT) <https://www.coingecko.com/en/coins/dhedge-dao>`__
+  - `Aavegotchi (GHST) <https://www.coingecko.com/en/coins/aavegotchi>`__
+  - `Moji Experience Points (MEXP) <https://www.coingecko.com/en/coins/moji-experience-points>`__
+  - `Polkastarter (POLS) <https://www.coingecko.com/en/coins/polkastarter>`__
+  - `Rarible (RARI) <https://www.coingecko.com/en/coins/rarible>`__
+  - `Rio DeFi (RFUEL) <https://www.coingecko.com/en/coins/rio-defi>`__
+  - `Value Liquidity (VALUE) <https://www.coingecko.com/en/coins/value-liquidity>`__
+  - `Beowulf (BWF) <https://www.coingecko.com/en/coins/beowulf>`__
+  - `GSTCoin (GST) <https://www.coingecko.com/en/coins/gstcoin>`__
+  - `Keep Token (KEEP) <https://www.coingecko.com/en/coins/keep-network>`__
+  - `Aave Token (AAVE) <https://www.coingecko.com/en/coins/aave>`__
+
 * :release:`1.8.0 <2020-09-23>`
 * :feature:`1498` Users can now select the protocol(s) when resetting the DeFi history cache.
 * :bug:`1504` Users can now properly start the application when the default backend port is used by another application.

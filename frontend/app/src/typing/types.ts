@@ -1,7 +1,8 @@
-import { ApiAssetBalance, AssetBalances } from '@/model/blockchain-balances';
 import { Currency } from '@/model/currency';
 import { SupportedDefiProtocols } from '@/services/defi/types';
 import { SupportedModules } from '@/services/session/types';
+import { AssetBalances } from '@/store/balances/types';
+import { SyncConflictPayload } from '@/store/session/types';
 
 export interface GeneralSettings {
   readonly floatingPrecision: number;
@@ -20,18 +21,14 @@ export interface GeneralSettings {
 }
 
 export interface AccountingSettings {
-  readonly lastBalanceSave: number;
   readonly includeCrypto2Crypto: boolean;
   readonly includeGasCosts: boolean;
   readonly taxFreeAfterPeriod: number | null;
 }
 
-export interface AccountingSettingsUpdate {
-  readonly lastBalanceSave?: number;
-  readonly includeCrypto2Crypto?: boolean;
-  readonly includeGasCosts?: boolean;
-  readonly taxFreeAfterPeriod?: number | null;
-}
+export type AccountingSettingsUpdate = {
+  +readonly [P in keyof AccountingSettings]+?: AccountingSettings[P];
+};
 
 export interface Credentials {
   readonly username: string;
@@ -43,10 +40,6 @@ export interface Credentials {
 }
 
 export type UsdToFiatExchangeRates = { [key: string]: number };
-
-export interface ApiAssetBalances {
-  [asset: string]: ApiAssetBalance;
-}
 
 export interface ExchangeInfo {
   readonly name: string;
@@ -73,11 +66,21 @@ export interface TaskResult<T> {
   status: 'completed' | 'not-found' | 'pending';
 }
 
-export const SupportedBlockchains = ['ETH', 'BTC'];
+export const ETH = 'ETH';
+export const BTC = 'BTC';
 
-export type Blockchain = 'ETH' | 'BTC';
+export const SupportedBlockchains = [ETH, BTC] as const;
 
-export class SyncConflictError extends Error {}
+export type Blockchain = typeof SupportedBlockchains[number];
+
+export class SyncConflictError extends Error {
+  readonly payload: SyncConflictPayload;
+
+  constructor(message: string, payload: SyncConflictPayload) {
+    super(message);
+    this.payload = payload;
+  }
+}
 
 export type SyncApproval = 'yes' | 'no' | 'unknown';
 
@@ -95,7 +98,7 @@ export type SettingsUpdate = {
   +readonly [P in keyof SettingsPayload]+?: SettingsPayload[P];
 };
 
-export interface SettingsPayload {
+interface SettingsPayload {
   balance_save_frequency: number;
   main_currency: string;
   anonymized_logs: boolean;
@@ -140,8 +143,6 @@ export interface AccountData {
   readonly tags: string[];
 }
 
-export type AccountDataMap = { [address: string]: AccountData };
-
 export interface Account {
   readonly chain: Blockchain;
   readonly address: string;
@@ -152,7 +153,3 @@ export interface DefiAccount extends Account {
 }
 
 export interface GeneralAccount extends AccountData, Account {}
-
-export type Properties<TObj, TResult> = {
-  [K in keyof TObj]: TObj[K] extends TResult ? K : never;
-}[keyof TObj];

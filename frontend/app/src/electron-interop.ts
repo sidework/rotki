@@ -1,3 +1,6 @@
+import { assert } from '@/utils/assertions';
+import { Level } from '@/utils/log-level';
+
 export class ElectronInterop {
   private packagedApp: boolean = !!window.interop;
   readonly baseUrl = 'https://rotki.com/';
@@ -39,6 +42,23 @@ export class ElectronInterop {
 
   closeApp() {
     window.interop?.closeApp();
+  }
+
+  async metamaskImport(): Promise<string[]> {
+    if (!window.interop) {
+      throw new Error('environment does not support interop');
+    }
+    return window.interop.metamaskImport().then(value => {
+      if ('error' in value) {
+        throw new Error(value.error);
+      }
+      return value.addresses;
+    });
+  }
+
+  async restartBackend(logLevel: Level): Promise<boolean> {
+    assert(window.interop);
+    return await window.interop.restartBackend(logLevel);
   }
 }
 

@@ -2,50 +2,115 @@ import { default as BigNumber } from 'bignumber.js';
 import isEmpty from 'lodash/isEmpty';
 import map from 'lodash/map';
 import { GetterTree } from 'vuex';
-import {
-  AccountBalance,
-  AssetBalance,
-  EthBalance,
-  ManualBalancesByLocation,
-  ManualBalanceByLocation
-} from '@/model/blockchain-balances';
 import { Balance } from '@/services/types-api';
-import { BalanceState } from '@/store/balances/types';
+import {
+  AccountWithBalance,
+  AssetBalance,
+  BalanceState,
+  BlockchainAccountWithBalance,
+  BlockchainTotal,
+  ManualBalanceByLocation,
+  LocationBalance
+} from '@/store/balances/types';
 import { RotkehlchenState } from '@/store/types';
-import { Blockchain, GeneralAccount } from '@/typing/types';
+import { BTC, ETH, GeneralAccount } from '@/typing/types';
 import { bigNumberify, Zero } from '@/utils/bignumbers';
 import { assetSum } from '@/utils/calculation';
 
 export const getters: GetterTree<BalanceState, RotkehlchenState> = {
-  ethAccounts(state: BalanceState): AccountBalance[] {
-    return map(state.eth, (value: EthBalance, account: string) => {
-      const accountBalance: AccountBalance = {
-        account,
-        amount: value.assets.ETH.amount,
-        usdValue: value.totalUsdValue
-      };
-      return accountBalance;
-    });
+  ethAccounts({
+    eth,
+    ethAccounts
+  }: BalanceState): BlockchainAccountWithBalance[] {
+    const accounts: BlockchainAccountWithBalance[] = [];
+    for (const account of ethAccounts) {
+      const accountAssets = eth[account.address];
+      const balance: Balance = accountAssets
+        ? {
+            amount: accountAssets.assets.ETH.amount,
+            usdValue: accountAssets.totalUsdValue
+          }
+        : { amount: Zero, usdValue: Zero };
+
+      accounts.push({
+        address: account.address,
+        label: account.label ?? '',
+        tags: account.tags ?? [],
+        chain: ETH,
+        balance
+      });
+    }
+    return accounts;
   },
 
-  btcAccounts(state: BalanceState): AccountBalance[] {
-    return map(state.btc, (value: Balance, account: string) => {
-      const accountBalance: AccountBalance = {
-        account,
-        ...value
-      };
-      return accountBalance;
+  btcAccounts({
+    btc,
+    btcAccounts
+  }: BalanceState): BlockchainAccountWithBalance[] {
+    const accounts: BlockchainAccountWithBalance[] = [];
+
+    const { standalone, xpubs } = btcAccounts;
+    const zeroBalance = () => ({
+      amount: Zero,
+      usdValue: Zero
     });
+
+    for (const account of standalone) {
+      const balance = btc.standalone?.[account.address] ?? zeroBalance();
+      accounts.push({
+        address: account.address,
+        label: account.label ?? '',
+        tags: account.tags ?? [],
+        chain: BTC,
+        balance
+      });
+    }
+
+    for (const account of xpubs) {
+      accounts.push({
+        chain: BTC,
+        xpub: account.xpub,
+        derivationPath: account.derivationPath ?? '',
+        address: '',
+        label: account.label ?? '',
+        tags: account.tags ?? [],
+        balance: zeroBalance()
+      });
+
+      if (!account.addresses) {
+        continue;
+      }
+
+      for (const address of account.addresses) {
+        const balanceIndex =
+          btc.xpubs?.findIndex(xpub => xpub.addresses[address.address]) ?? -1;
+        accounts.push({
+          chain: BTC,
+          xpub: account.xpub,
+          derivationPath: account.derivationPath ?? '',
+          address: address.address,
+          label: address.label ?? '',
+          tags: address.tags ?? [],
+          balance:
+            balanceIndex > 0
+              ? btc.xpubs[balanceIndex].addresses[address.address]
+              : zeroBalance()
+        });
+      }
+    }
+
+    return accounts;
   },
 
-  totals(state: BalanceState): AssetBalance[] {
+  totals(state: BalanceState, _, { session }): AssetBalance[] {
+    const ignoredAssets = session!.ignoredAssets;
     return map(state.totals, (value: Balance, asset: string) => {
       const assetBalance: AssetBalance = {
         asset,
         ...value
       };
       return assetBalance;
-    });
+    }).filter(balance => !ignoredAssets.includes(balance.asset));
   },
 
   exchangeRate: (state: BalanceState) => (currency: string) => {
@@ -54,33 +119,46 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
 
   exchanges: (state: BalanceState) => {
     const balances = state.exchangeBalances;
-    return Object.keys(balances).map(value => ({
-      name: value,
-      balances: balances[value],
-      total: assetSum(balances[value])
-    }));
+    return Object.keys(balances)
+      .map(value => ({
+        name: value,
+        balances: balances[value],
+        total: assetSum(balances[value])
+      }))
+      .sort((a, b) => b.total.minus(a.total).toNumber());
   },
 
-  exchangeBalances: (state: BalanceState) => (
+  exchangeBalances: (state: BalanceState, _, { session }) => (
     exchange: string
   ): AssetBalance[] => {
+    const ignoredAssets = session!.ignoredAssets;
     const exchangeBalances = state.exchangeBalances[exchange];
     return exchangeBalances
-      ? Object.keys(exchangeBalances).map(
-          asset =>
-            ({
-              asset,
-              amount: exchangeBalances[asset].amount,
-              usdValue: exchangeBalances[asset].usdValue
-            } as AssetBalance)
-        )
+      ? Object.keys(exchangeBalances)
+          .filter(asset => !ignoredAssets.includes(asset))
+          .map(
+            asset =>
+              ({
+                asset,
+                amount: exchangeBalances[asset].amount,
+                usdValue: exchangeBalances[asset].usdValue
+              } as AssetBalance)
+          )
       : [];
   },
 
-  aggregatedBalances: (state: BalanceState, getters): AssetBalance[] => {
+  aggregatedBalances: (
+    { connectedExchanges, manualBalances }: BalanceState,
+    { exchangeBalances, totals },
+    { session }
+  ): AssetBalance[] => {
+    const ignoredAssets = session!.ignoredAssets;
     const ownedAssets: { [asset: string]: AssetBalance } = {};
     const addToOwned = (value: AssetBalance) => {
       const asset = ownedAssets[value.asset];
+      if (ignoredAssets.includes(value.asset)) {
+        return;
+      }
       ownedAssets[value.asset] = !asset
         ? value
         : {
@@ -90,14 +168,16 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
           };
     };
 
-    for (const exchange of state.connectedExchanges) {
-      const balances = getters.exchangeBalances(exchange);
+    for (const exchange of connectedExchanges) {
+      const balances = exchangeBalances(exchange);
       balances.forEach((value: AssetBalance) => addToOwned(value));
     }
 
-    getters.totals.forEach((value: AssetBalance) => addToOwned(value));
-    state.manualBalances.forEach(value => addToOwned(value));
-    return Object.values(ownedAssets);
+    totals.forEach((value: AssetBalance) => addToOwned(value));
+    manualBalances.forEach(value => addToOwned(value));
+    return Object.values(ownedAssets).sort((a, b) =>
+      b.usdValue.minus(a.usdValue).toNumber()
+    );
   },
 
   // simplify the manual balances object so that we can easily reduce it
@@ -105,7 +185,7 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
     state: BalanceState,
     { exchangeRate },
     { session }
-  ) => {
+  ): LocationBalance[] => {
     const mainCurrency =
       session?.generalSettings.selectedCurrency.ticker_symbol;
 
@@ -126,7 +206,7 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
 
       // to avoid double-conversion, we take as usdValue the amount property when the original asset type and
       // user's main currency coincide
-      const { location, usdValue }: ManualBalancesByLocation = {
+      const { location, usdValue }: LocationBalance = {
         location: perLocationBalance.location,
         usdValue: convertedValue
       };
@@ -135,10 +215,7 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
 
     // Aggregate all balances per location
     const aggregateManualBalancesByLocation: ManualBalanceByLocation = simplifyManualBalances.reduce(
-      (
-        result: ManualBalanceByLocation,
-        manualBalance: ManualBalancesByLocation
-      ) => {
+      (result: ManualBalanceByLocation, manualBalance: LocationBalance) => {
         if (result[manualBalance.location]) {
           // if the location exists on the reduced object, add the usdValue of the current item to the previous total
           result[manualBalance.location] = result[manualBalance.location].plus(
@@ -154,7 +231,12 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
       {}
     );
 
-    return aggregateManualBalancesByLocation;
+    return Object.keys(aggregateManualBalancesByLocation)
+      .map(location => ({
+        location,
+        usdValue: aggregateManualBalancesByLocation[location]
+      }))
+      .sort((a, b) => b.usdValue.minus(a.usdValue).toNumber());
   },
 
   blockchainTotal: (_, getters) => {
@@ -163,20 +245,54 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
     }, Zero);
   },
 
-  accountAssets: (state: BalanceState) => (account: string) => {
+  blockchainTotals: (_, getters): BlockchainTotal[] => {
+    const sum = (accounts: BlockchainAccountWithBalance[]): BigNumber => {
+      return accounts.reduce(
+        (sum: BigNumber, { balance }: AccountWithBalance) => {
+          return sum.plus(balance.usdValue);
+        },
+        Zero
+      );
+    };
+
+    const totals: BlockchainTotal[] = [];
+    const ethAccounts: BlockchainAccountWithBalance[] = getters.ethAccounts;
+    const btcAccounts: BlockchainAccountWithBalance[] = getters.btcAccounts;
+
+    if (ethAccounts.length > 0) {
+      totals.push({
+        chain: ETH,
+        usdValue: sum(ethAccounts)
+      });
+    }
+
+    if (btcAccounts.length > 0) {
+      totals.push({
+        chain: BTC,
+        usdValue: sum(btcAccounts)
+      });
+    }
+
+    return totals.sort((a, b) => b.usdValue.minus(a.usdValue).toNumber());
+  },
+
+  accountAssets: (state: BalanceState, _, { session }) => (account: string) => {
+    const ignoredAssets = session!.ignoredAssets;
     const ethAccount = state.eth[account];
     if (!ethAccount || isEmpty(ethAccount)) {
       return [];
     }
 
-    return Object.entries(ethAccount.assets).map(
-      ([key, asset_data]) =>
-        ({
-          asset: key,
-          amount: asset_data.amount,
-          usdValue: asset_data.usdValue
-        } as AssetBalance)
-    );
+    return Object.entries(ethAccount.assets)
+      .filter(([asset]) => !ignoredAssets.includes(asset))
+      .map(
+        ([key, asset_data]) =>
+          ({
+            asset: key,
+            amount: asset_data.amount,
+            usdValue: asset_data.usdValue
+          } as AssetBalance)
+      );
   },
 
   hasTokens: (state: BalanceState) => (account: string) => {
@@ -188,22 +304,6 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
     return Object.entries(ethAccount.assets).length > 1;
   },
 
-  accountTags: (state: BalanceState) => (
-    blockchain: Blockchain,
-    address: string
-  ): string[] => {
-    const data = blockchain === 'ETH' ? state.ethAccounts : state.btcAccounts;
-    return data[address]?.tags ?? [];
-  },
-
-  accountLabel: (state: BalanceState) => (
-    blockchain: Blockchain,
-    address: string
-  ): string => {
-    const data = blockchain === 'ETH' ? state.ethAccounts : state.btcAccounts;
-    return data[address]?.label ?? '';
-  },
-
   manualLabels: ({ manualBalances }: BalanceState) => {
     return manualBalances.map(value => value.label);
   },
@@ -212,18 +312,16 @@ export const getters: GetterTree<BalanceState, RotkehlchenState> = {
     return supportedAssets.find(asset => asset.key === key);
   },
 
-  accounts: ({ ethAccounts, btcAccounts }) => {
-    const accounts: GeneralAccount[] = [];
-
-    for (const account of Object.values(ethAccounts)) {
-      accounts.push({ chain: 'ETH', ...account });
-    }
-
-    for (const account of Object.values(btcAccounts)) {
-      accounts.push({ chain: 'BTC', ...account });
-    }
-
-    return accounts;
+  accounts: (_, { ethAccounts, btcAccounts }): GeneralAccount[] => {
+    return ethAccounts
+      .concat(btcAccounts)
+      .filter((account: BlockchainAccountWithBalance) => !!account.address)
+      .map((account: BlockchainAccountWithBalance) => ({
+        chain: account.chain,
+        address: account.address,
+        label: account.label,
+        tags: account.tags
+      }));
   },
 
   account: (_, getters) => (address: string) => {

@@ -23,6 +23,7 @@ from rotkehlchen.balances.manual import (
     get_manually_tracked_balances,
     remove_manually_tracked_balances,
 )
+from rotkehlchen.chain.bitcoin.xpub import XpubManager
 from rotkehlchen.chain.ethereum.transactions import FREE_ETH_TX_LIMIT
 from rotkehlchen.db.queried_addresses import QueriedAddresses
 from rotkehlchen.db.settings import ModifiableDBSettings
@@ -70,6 +71,7 @@ from rotkehlchen.typing import (
 from rotkehlchen.utils.version_check import check_if_version_up_to_date
 
 if TYPE_CHECKING:
+    from rotkehlchen.chain.bitcoin.xpub import XpubData
     from rotkehlchen.db.dbhandler import DBHandler
 
 
@@ -854,7 +856,8 @@ class RestAPI():
             return api_response(result_dict, status_code=HTTPStatus.UNAUTHORIZED)
         except RotkehlchenPermissionError as e:
             self.rotkehlchen.reset_after_failed_account_creation_or_login()
-            result_dict['message'] = str(e)
+            result_dict['result'] = e.message_payload
+            result_dict['message'] = e.error_message
             return api_response(result_dict, status_code=HTTPStatus.MULTIPLE_CHOICES)
         except (DBUpgradeError, SystemPermissionError) as e:
             self.rotkehlchen.reset_after_failed_account_creation_or_login()
@@ -950,12 +953,12 @@ class RestAPI():
             return api_response(OK_RESULT, status_code=HTTPStatus.OK)
 
     @require_premium_user(active_check=False)
-    def user_premium_key_remove(self, name: str) -> Response:
+    def user_premium_key_remove(self) -> Response:
         """Returns successful result if API keys are successfully removed"""
         result_dict: Dict[str, Any] = {'result': None, 'message': ''}
         success: bool
 
-        success, msg = self.rotkehlchen.delete_premium_credentials(name)
+        success, msg = self.rotkehlchen.delete_premium_credentials()
 
         if success is False:
             result_dict['message'] = msg
@@ -1090,11 +1093,68 @@ class RestAPI():
         result = process_result(data)
         return api_response(_wrap_in_ok_result(result), status_code=HTTPStatus.OK)
 
+    def _add_xpub(self, xpub_data: 'XpubData') -> Dict[str, Any]:
+        try:
+            result = XpubManager(self.rotkehlchen.chain_manager).add_bitcoin_xpub(
+                xpub_data=xpub_data,
+            )
+        except InputError as e:
+            return {'result': None, 'message': str(e), 'status_code': HTTPStatus.BAD_REQUEST}
+        except TagConstraintError as e:
+            return {'result': None, 'message': str(e), 'status_code': HTTPStatus.CONFLICT}
+        except RemoteError as e:
+            return {'result': None, 'message': str(e), 'status_code': HTTPStatus.BAD_GATEWAY}
+
+        # success
+        return {'result': result.serialize(), 'message': ''}
+
+    @require_loggedin_user()
+    def add_xpub(self, xpub_data: 'XpubData', async_query: bool) -> Response:
+        if async_query:
+            return self._query_async(command='_add_xpub', xpub_data=xpub_data)
+
+        response = self._add_xpub(xpub_data=xpub_data)
+        result = response['result']
+        msg = response['message']
+
+        if result is None:
+            return api_response(wrap_in_fail_result(msg), status_code=response['status_code'])
+
+        # success
+        result_dict = _wrap_in_result(result, msg)
+        return api_response(process_result(result_dict), status_code=HTTPStatus.OK)
+
+    def _delete_xpub(self, xpub_data: 'XpubData') -> Dict[str, Any]:
+        try:
+            result = XpubManager(self.rotkehlchen.chain_manager).delete_bitcoin_xpub(
+                xpub_data=xpub_data,
+            )
+        except InputError as e:
+            return {'result': None, 'message': str(e), 'status_code': HTTPStatus.BAD_REQUEST}
+
+        # success
+        return {'result': result.serialize(), 'message': ''}
+
+    @require_loggedin_user()
+    def delete_xpub(self, xpub_data: 'XpubData', async_query: bool) -> Response:
+        if async_query:
+            return self._query_async(command='_delete_xpub', xpub_data=xpub_data)
+
+        response = self._delete_xpub(xpub_data=xpub_data)
+        result = response['result']
+        msg = response['message']
+
+        if result is None:
+            return api_response(wrap_in_fail_result(msg), status_code=response['status_code'])
+
+        # success
+        result_dict = _wrap_in_result(result, msg)
+        return api_response(process_result(result_dict), status_code=HTTPStatus.OK)
+
     @require_loggedin_user()
     def get_blockchain_accounts(self, blockchain: SupportedBlockchain) -> Response:
-        data = self.rotkehlchen.data.db.get_blockchain_account_data(blockchain)
-        result_dict = _wrap_in_result([entry._asdict() for entry in data], '')
-        return api_response(process_result(result_dict), status_code=HTTPStatus.OK)
+        data = self.rotkehlchen.get_blockchain_account_data(blockchain)
+        return api_response(process_result(_wrap_in_result(data, '')), status_code=HTTPStatus.OK)
 
     def _add_blockchain_accounts(
             self,
@@ -1164,9 +1224,8 @@ class RestAPI():
             return api_response(wrap_in_fail_result(str(e)), status_code=HTTPStatus.BAD_REQUEST)
 
         # success
-        data = self.rotkehlchen.data.db.get_blockchain_account_data(blockchain)
-        result_dict = _wrap_in_result([entry._asdict() for entry in data], '')
-        return api_response(process_result(result_dict), status_code=HTTPStatus.OK)
+        data = self.rotkehlchen.get_blockchain_account_data(blockchain)
+        return api_response(process_result(_wrap_in_result(data, '')), status_code=HTTPStatus.OK)
 
     def _remove_blockchain_accounts(
             self,
@@ -1552,11 +1611,16 @@ class RestAPI():
             async_query=async_query,
             module='aave',
             method='get_history',
-            query_specific_balances_before=None,
+            # We need to query defi balances before since defi_balances must be populated
+            query_specific_balances_before=['defi'],
             addresses=self.rotkehlchen.chain_manager.queried_addresses_for_module('aave'),
             reset_db_data=reset_db_data,
             from_timestamp=from_timestamp,
             to_timestamp=to_timestamp,
+            # Giving the defi balances as a lambda function here so that they
+            # are retrieved only after we are sure the defi balances have been
+            # queried.
+            given_defi_balances=lambda: self.rotkehlchen.chain_manager.defi_balances,
         )
 
     @require_loggedin_user()
@@ -1776,3 +1840,35 @@ class RestAPI():
             response.set_etag(hashlib.md5(image_data).hexdigest())
 
         return response
+
+    def _sync_data(self, action: Literal['upload', 'download']) -> Dict[str, Any]:
+        try:
+            success, msg = self.rotkehlchen.premium_sync_manager.sync_data(action)
+            if msg.startswith('Pulling failed'):
+                return wrap_in_fail_result(msg, status_code=HTTPStatus.BAD_GATEWAY)
+            return _wrap_in_result(success, message=msg)
+        except RemoteError as e:
+            return wrap_in_fail_result(str(e), status_code=HTTPStatus.BAD_GATEWAY)
+        except PremiumApiError as e:
+            return wrap_in_fail_result(str(e), status_code=HTTPStatus.BAD_GATEWAY)
+        except PremiumAuthenticationError as e:
+            return wrap_in_fail_result(str(e), status_code=HTTPStatus.UNAUTHORIZED)
+
+    def sync_data(
+            self,
+            async_query: bool,
+            action: Literal['upload', 'download'],
+    ) -> Response:
+        if async_query:
+            return self._query_async(
+                command='_sync_data',
+                action=action,
+            )
+
+        result_dict = self._sync_data(action)
+
+        status_code = result_dict.get('status_code', None)
+        if status_code is None:
+            status_code = HTTPStatus.OK
+
+        return api_response(result_dict, status_code=status_code)

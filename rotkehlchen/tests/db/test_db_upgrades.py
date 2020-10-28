@@ -1006,6 +1006,62 @@ def test_upgrade_db_16_to_17(user_data_dir):
     assert db.get_version() == 17
 
 
+def test_upgrade_db_18_to_19(user_data_dir):
+    """Test upgrading the DB from version 18 to version 19.
+
+    Deletes all aave data and recreates table with all the new attributes
+    """
+    msg_aggregator = MessagesAggregator()
+    _use_prepared_db(user_data_dir, 'v18_rotkehlchen.db')
+    db = _init_db_with_target_version(
+        target_version=19,
+        user_data_dir=user_data_dir,
+        msg_aggregator=msg_aggregator,
+    )
+    cursor = db.conn.cursor()
+
+    assert cursor.execute('SELECT COUNT(*) FROM aave_events;').fetchone()[0] == 0
+    # Test that query ranges also get cleared
+    assert cursor.execute(
+        'SELECT COUNT(*) FROM used_query_ranges WHERE name LIKE "aave_events%";',
+    ).fetchone()[0] == 0
+    # test schema upgrade by using a new column from the upgraded schema. If nonexisting it raises
+    cursor.execute('SELECT asset2usd_value_accruedinterest_feeusdvalue FROM aave_events;')
+
+    # Finally also make sure that we have updated to the target version
+    assert db.get_version() == 19
+
+
+def test_upgrade_db_19_to_20(user_data_dir):
+    """Test upgrading the DB from version 19 to version 20.
+
+    Deletes all xpubs with derivations path that are invalid and not processable by rotki
+    """
+    msg_aggregator = MessagesAggregator()
+    _use_prepared_db(user_data_dir, 'v19_rotkehlchen.db')
+    db = _init_db_with_target_version(
+        target_version=20,
+        user_data_dir=user_data_dir,
+        msg_aggregator=msg_aggregator,
+    )
+    cursor = db.conn.cursor()
+    query = cursor.execute('SELECT xpub, derivation_path, label FROM xpubs;')
+    length = 0
+    expected_results = [
+        ('xpub6DCi5iJ57ZPd5qPzvTm5hUt6X23TJdh9H4NjNsNbt7t7UuTMJfawQWsdWRFhfLwkiMkB1rQ4ZJWLB9YBnzR7kbs9N8b2PsKZgKUHQm1X4or', '', 'My totally public xpub'),  # noqa: E501
+        ('ypub6WkRUvNhspMCJLiLgeP7oL1pzrJ6wA2tpwsKtXnbmpdAGmHHcC6FeZeF4VurGU14dSjGpF2xLavPhgvCQeXd6JxYgSfbaD1wSUi2XmEsx33', '', ''),  # noqa: E501
+        ('xpub68V4ZQQ62mea7ZUKn2urQu47Bdn2Wr7SxrBxBDDwE3kjytj361YBGSKDT4WoBrE5htrSB8eAMe59NPnKrcAbiv2veN5GQUmfdjRddD1Hxrk', 'm/1/15', 'valid derivation path xpub'),  # noqa: E501
+    ]
+    for entry in query:
+        assert (entry[0], entry[1], entry[2]) in expected_results
+        length += 1
+
+    assert length == 3
+
+    # Finally also make sure that we have updated to the target version
+    assert db.get_version() == 20
+
+
 def test_db_newer_than_software_raises_error(data_dir, username):
     """
     If the DB version is greater than the current known version in the

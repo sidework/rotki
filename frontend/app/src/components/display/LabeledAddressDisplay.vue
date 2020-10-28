@@ -1,18 +1,18 @@
 <template>
   <div>
-    <v-tooltip top>
+    <v-tooltip top open-delay="400" :disabled="!truncated">
       <template #activator="{ on }">
         <span class="labeled-address-display__address" v-on="on">
           <v-chip label outlined>
-            <span v-if="account.identifier !== account.account" class="pr-1">
+            <span v-if="!!account.label" class="pr-1">
               {{
-                $t('labeled_address_display.identifier', {
-                  identifier: account.identifier
+                $t('labeled_address_display.label', {
+                  label: account.label
                 })
               }}
             </span>
             <span :class="privacyMode ? 'blur-content' : null">
-              {{ address | truncateAddress }}
+              {{ displayAddress }}
             </span>
           </v-chip>
         </span>
@@ -20,7 +20,7 @@
       <span> {{ address }} </span>
     </v-tooltip>
     <div class="labeled-address-display__copy">
-      <v-tooltip top>
+      <v-tooltip top open-delay="400">
         <template #activator="{ on, attrs }">
           <v-btn
             small
@@ -35,6 +35,25 @@
         </template>
         <span>{{ $t('labeled_address_display.copy') }}</span>
       </v-tooltip>
+      <v-tooltip top open-delay="600">
+        <template #activator="{ on, attrs }">
+          <v-btn
+            small
+            icon
+            tile
+            v-bind="attrs"
+            target="_blank"
+            :href="$interop.isPackaged ? undefined : url"
+            v-on="on"
+            @click="openLink"
+          >
+            <v-icon small>
+              mdi-launch
+            </v-icon>
+          </v-btn>
+        </template>
+        <span>{{ $t('labeled_address_display.open_link') }}</span>
+      </v-tooltip>
     </div>
   </div>
 </template>
@@ -42,10 +61,12 @@
 <script lang="ts">
 import { Component, Mixins, Prop } from 'vue-property-decorator';
 import { mapState } from 'vuex';
+import { explorerUrls } from '@/components/helper/asset-urls';
+import { truncateAddress, truncationPoints } from '@/filters';
 import ScrambleMixin from '@/mixins/scramble-mixin';
+import { GeneralAccount } from '@/typing/types';
 import { randomHex } from '@/typing/utils';
-
-type Account = { readonly identifier: string; readonly account: string };
+import { assert } from '@/utils/assertions';
 
 @Component({
   computed: { ...mapState('session', ['privacyMode']) }
@@ -54,14 +75,36 @@ export default class LabeledAddressDisplay extends Mixins(ScrambleMixin) {
   privacyMode!: boolean;
 
   @Prop({ required: true })
-  account!: Account;
+  account!: GeneralAccount;
+
+  truncated: boolean = false;
 
   get address(): string {
-    return this.scrambleData ? randomHex() : this.account.account;
+    return this.scrambleData ? randomHex() : this.account.address;
+  }
+
+  get displayAddress(): string {
+    const address = truncateAddress(
+      this.address,
+      truncationPoints[this.$vuetify.breakpoint.name] ?? 4
+    );
+    this.truncated = address.includes('...');
+    return address;
   }
 
   copy(address: string) {
     navigator.clipboard.writeText(address);
+  }
+
+  get url(): string {
+    const { chain, address } = this.account;
+    const explorerUrl = explorerUrls[chain];
+    assert(explorerUrl);
+    return explorerUrl.address + address;
+  }
+
+  openLink() {
+    this.$interop.openUrl(this.url);
   }
 }
 </script>

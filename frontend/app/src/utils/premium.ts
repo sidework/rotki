@@ -8,11 +8,12 @@ import AmountDisplay from '@/components/display/AmountDisplay.vue';
 import AssetMovementDisplay from '@/components/display/AssetMovementDisplay.vue';
 import BalanceDisplay from '@/components/display/BalanceDisplay.vue';
 import EventTypeDisplay from '@/components/display/EventTypeDisplay.vue';
+import PercentageDisplay from '@/components/display/PercentageDisplay.vue';
 import PremiumLoadingFailed from '@/components/display/PremiumLoadingFailed.vue';
 import AssetDetails from '@/components/helper/AssetDetails.vue';
 import HashLink from '@/components/helper/HashLink.vue';
+import { DebugSettings } from '@/electron-main/ipc';
 import { api } from '@/services/rotkehlchen-api';
-import { DebugSettings } from '@/types';
 
 export const setupPremium = () => {
   window.Vue = Vue;
@@ -34,6 +35,8 @@ export const setupPremium = () => {
   Vue.component('EventTypeDisplay', EventTypeDisplay);
   Vue.component('CryptoIcon', CryptoIcon);
   Vue.component('BalanceDisplay', BalanceDisplay);
+  // version: 3
+  Vue.component('PercentageDisplay', PercentageDisplay);
 };
 
 function findComponents(): string[] {
@@ -118,6 +121,13 @@ export const CompoundBorrowingDetails = (): Promise<VueConstructor> => {
 
 export const YearnVaultsProfitDetails = (): Promise<VueConstructor> => {
   return load('YearnVaultsProfitDetails');
+};
+
+export const AaveBorrowingDetails = (): Promise<VueConstructor> => {
+  return load('AaveBorrowingDetails');
+};
+export const AaveEarnedDetails = (): Promise<VueConstructor> => {
+  return load('AaveEarnedDetails');
 };
 
 declare global {

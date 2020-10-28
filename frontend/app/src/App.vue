@@ -1,8 +1,9 @@
 <template>
   <v-app v-if="!isPlayground" id="rotki">
-    <div v-show="logged" class="app__content rotki-light-grey">
+    <div v-if="logged" class="app__content rotki-light-grey">
       <notification-popup />
       <v-navigation-drawer
+        v-if="loginComplete"
         v-model="drawer"
         width="300"
         class="app__navigation-drawer"
@@ -13,7 +14,7 @@
       >
         <div v-if="!mini" class="text-center app__logo" />
         <div v-else class="app__logo-mini">
-          rotki
+          {{ $t('app.name') }}
         </div>
         <navigation-menu :show-tooltips="mini" />
         <v-spacer />
@@ -79,12 +80,12 @@ import AccountManagement from '@/components/AccountManagement.vue';
 import CurrencyDropDown from '@/components/CurrencyDropDown.vue';
 import MessageDialog from '@/components/dialogs/MessageDialog.vue';
 import NavigationMenu from '@/components/NavigationMenu.vue';
-import BalanceSavedIndicator from '@/components/status/BalanceSavedIndicator.vue';
 import NodeStatusIndicator from '@/components/status/NodeStatusIndicator.vue';
 import NotificationIndicator from '@/components/status/NotificationIndicator.vue';
 import NotificationPopup from '@/components/status/notifications/NotificationPopup.vue';
 import NotificationSidebar from '@/components/status/notifications/NotificationSidebar.vue';
 import ProgressIndicator from '@/components/status/ProgressIndicator.vue';
+import SyncIndicator from '@/components/status/sync/SyncIndicator.vue';
 import '@/services/task-manager';
 import UpdateIndicator from '@/components/status/UpdateIndicator.vue';
 import UserDropdown from '@/components/UserDropdown.vue';
@@ -103,7 +104,7 @@ import { Message } from '@/store/types';
     UpdateIndicator,
     ProgressIndicator,
     NotificationIndicator,
-    BalanceSavedIndicator,
+    BalanceSavedIndicator: SyncIndicator,
     NodeStatusIndicator,
     MessageDialog,
     CurrencyDropDown,
@@ -138,11 +139,15 @@ export default class App extends Vue {
     if (!this.logged) {
       this.completeLogin(false);
     } else {
+      this.drawer = !this.$vuetify.breakpoint.mobile;
+    }
+
+    if (this.$route.name !== 'dashboard') {
       this.$router.push({ name: 'dashboard' });
     }
   }
 
-  drawer = true;
+  drawer = false;
   mini = false;
 
   startupError: string = '';
@@ -189,13 +194,8 @@ export default class App extends Vue {
 @import '~@/scss/scroll';
 
 .v-navigation-drawer {
-  &--fixed {
-    z-index: 100 !important;
-  }
-
   &--is-mobile {
-    padding-top: 60px;
-    z-index: 300 !important;
+    padding-top: 60px !important;
   }
 
   @extend .themed-scrollbar;
@@ -240,8 +240,6 @@ export default class App extends Vue {
   }
 
   &__navigation-drawer {
-    box-shadow: 14px 0 10px -10px var(--v-rotki-light-grey-darken1);
-    z-index: 200 !important;
     padding-bottom: 48px;
 
     &__version {

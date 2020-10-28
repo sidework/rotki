@@ -23,6 +23,7 @@
         :rules="apiKeyRules"
         :label="$t('premium_credentials.label_api_key')"
         @input="apiKeyChanged"
+        @paste="onApiKeyPaste"
       />
       <revealable-input
         :value="apiSecret"
@@ -32,6 +33,7 @@
         :label="$t('premium_credentials.label_api_secret')"
         :rules="apiSecretRules"
         @input="apiSecretChanged"
+        @paste="onApiSecretPaste"
       />
     </div>
   </div>
@@ -40,6 +42,7 @@
 <script lang="ts">
 import { Component, Emit, Prop, Vue, Watch } from 'vue-property-decorator';
 import RevealableInput from '@/components/inputs/RevealableInput.vue';
+import { trimOnPaste } from '@/utils/event';
 
 @Component({
   components: { RevealableInput }
@@ -75,12 +78,30 @@ export default class PremiumCredentials extends Vue {
   ];
 
   @Emit()
-  apiKeyChanged(_apiKey: string) {}
+  apiKeyChanged(apiKey: string): string {
+    return apiKey ? apiKey.trim() : '';
+  }
 
   @Emit()
-  apiSecretChanged(_apiSecret: string) {}
+  apiSecretChanged(apiSecret: string): string {
+    return apiSecret ? apiSecret.trim() : '';
+  }
 
   @Emit()
   enabledChanged(_enabled: boolean) {}
+
+  onApiKeyPaste(_event: ClipboardEvent) {
+    const paste = trimOnPaste(_event);
+    if (paste) {
+      this.apiKeyChanged(paste);
+    }
+  }
+
+  onApiSecretPaste(_event: ClipboardEvent) {
+    const paste = trimOnPaste(_event);
+    if (paste) {
+      this.apiSecretChanged(paste);
+    }
+  }
 }
 </script>

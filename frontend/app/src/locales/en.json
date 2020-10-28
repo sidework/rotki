@@ -35,9 +35,14 @@
     "label_username": "Username",
     "label_password": "Password",
     "sync_error": {
-      "title": "Sync Error",
+      "title": "User action required for DB sync",
       "button_yes": "Yes",
-      "button_no": "No"
+      "button_no": "No",
+      "local_size": "Local size: {0}",
+      "remote_size": "Remote size: {0}",
+      "local_modified": "Local last modified: {0}",
+      "remote_modified": "Remote last modified: {0}",
+      "question": "Do you want to replace your local database?"
     },
     "button_signin": "Sign In",
     "button_new_account": "Create New Account",
@@ -357,6 +362,92 @@
       "exchange_removal": {
         "title": "Exchange removal",
         "description": "The removal of {exchange} failed due to: {error}"
+      },
+      "blockchain_account_removal": {
+        "task" : {
+          "title": "Removing {blockchain} account",
+          "description": "{address} is being removed"
+        },
+        "error": {
+          "description": "Failed to remove the account: {error}",
+          "title": "Removing {blockchain} account {address}"
+        }
+      },
+      "blockchain_account_add": {
+        "task" : {
+          "title": "Adding {blockchain} account",
+          "description": "{address} is being added"
+        },
+        "error": {
+          "description": "Failed to add the account: {error}",
+          "title": "Adding {blockchain} account {address}"
+        }
+      },
+      "exchange_balances": {
+        "task": {
+          "title": "Retrieving {name} balances"
+        },
+        "error": {
+          "title": "{name} balance query",
+          "message": "Failed to query {name} balances: {error}"
+        }
+      },
+      "xpub_removal": {
+        "task": {
+          "title": "Removing xpub",
+          "description": "{xpub}"
+        },
+        "error": {
+          "title": "Xpub Removal",
+          "description": "Failed to remove {xpub}: {error}"
+        }
+      },
+      "blockchain_accounts_add": {
+        "no_new": {
+          "title": "Adding {blockchain} accounts",
+          "description": "The selected addresses are already tracked by rotki"
+        },
+        "task": {
+          "title": "Adding {blockchain} account",
+          "description": "Adding {address}"
+        },
+        "error": {
+          "title": "Adding {blockchain} accounts",
+          "description": "Failed to add {addresses} new {blockchain} accounts: {error}"
+        }
+      }
+    },
+    "session": {
+      "ignored_assets": {
+        "error": {
+          "title": "Querying ignored assets",
+          "message": "Failed to retrieve ignored assets: {error}"
+        }
+      },
+      "ignore_asset": {
+        "error": {
+          "title": "Ignoring {asset}",
+          "message": "Failed to ignore asset: {error}"
+        }
+      },
+      "unignore_asset": {
+        "error": {
+          "title": "Unignoring {asset}",
+          "message": "Failed to unignore asset: {error}"
+        }
+      },
+      "force_sync": {
+        "task": {
+          "title": "Forced Sync"
+        },
+        "error": {
+          "title": "Forced Sync",
+          "message": "There was an error while performing the sync: {error}"
+        },
+        "success": {
+          "title": "Forced sync",
+          "message": "The data sync operation was completed successfully."
+        }
       }
     }
   },
@@ -428,8 +519,9 @@
     }
   },
   "labeled_address_display": {
-    "identifier": "{identifier} |",
-    "copy": "Copy address to clipboard"
+    "label": "{label} |",
+    "copy": "Copy address to clipboard",
+    "open_link": "Open in external block explorer"
   },
   "defi_selector_item": {
     "vault": "Maker Vault"
@@ -465,7 +557,7 @@
     "total": "Total",
     "confirm_delete": {
       "title": "Account delete",
-      "description": "Are you sure you want to delete {toDeleteAccount}"
+      "description": "Are you sure you want to delete {address}"
     }
   },
   "lending": {
@@ -527,7 +619,12 @@
     "labels": {
       "blockchain": "Choose blockchain",
       "account": "Account",
-      "label": "Label"
+      "label": "Label",
+      "btc": {
+        "xpub": "XPUB",
+        "derivation_path": "Derivation Path",
+        "derivation_path_hint": "Optional"
+      }
     },
     "validation": {
       "address_non_empty": "The address cannot be empty",
@@ -536,7 +633,8 @@
     "error": {
       "title": "Adding Account",
       "description": "Error while adding account: {error}"
-    }
+    },
+    "advanced_tooltip": "Display the advanced xpub options | Hide the advanced xpub options"
   },
   "blockchain_balances": {
     "title": "Blockchain Balances",
@@ -553,6 +651,12 @@
     "balances": {
       "eth": "ETH per account balances",
       "btc": "BTC per account balances"
+    },
+    "metamask_import": {
+      "error": {
+        "title": "Metamask address import",
+        "description": "Adding addresses from metamask could not be completed: {error}"
+      }
     }
   },
   "percentage_display": {
@@ -644,5 +748,172 @@
         "cancel": "Cancel"
       }
     }
+  },
+  "account_group_header": {
+    "copy_tooltip": "Copy the xpub to the clipboard",
+    "standalone": "Standalone",
+    "xpub": "xpub:",
+    "derivation_path": "Derivation Path",
+    "delete_tooltip": "Delete the entry and all the accounts underneath it"
+  },
+  "accounting_settings": {
+    "title": "Trade Settings",
+    "labels": {
+      "crypto_to_crypto": "Take into account crypto to crypto trades",
+      "gas_costs": "Take into account Ethereum gas costs",
+      "tax_free": "Is there a tax free period?",
+      "tax_free_period": "Tax free after how many days"
+    }
+  },
+  "account_settings": {
+    "asset_settings": {
+      "title": "Asset Settings",
+      "actions": {
+        "add": "Add",
+        "remove": "Remove"
+      },
+      "labels": {
+        "ignore": "Select asset to ignore",
+        "unignore": "Select asset to remove from ignored assets",
+        "unignore_hint": "Click to see all ignored assets and select one for removal"
+      },
+      "ignore_tags_hint": "Click to see all assets and select one to ignore"
+    },
+    "validation": {
+      "tax_free_days": "Please enter the number of days",
+      "tax_free_days_gt_zero": "The number of days cannot be negative or zero"
+    },
+    "messages": {
+      "tax_free_period": "Tax free period set to {period} days",
+      "tax_free": "Tax free period {enabled}",
+      "crypto_to_crypto": "Error setting crypto to crypto {message}",
+      "gas_costs": "Error setting Ethereum gas costs: {message}",
+      "ignored_success": "{asset} added to ignored assets",
+      "ignored_failure": "{asset} could not be added to ignored assets: {message}",
+      "unignored_success": "{asset} removed from ignored assets",
+      "unignored_failure": "{asset} could not be removed from ignored assets: {message}"
+    }
+  },
+  "settings": {
+    "title": "Settings"
+  },
+  "statistics": {
+    "title": "Statistics",
+    "no_premium": "No premium subscription detected. Statistics are only available to premium users.",
+    "get_premium": "To get a premium subscription please visit our {0}"
+  },
+  "tax_report": {
+    "title": "Tax Report",
+    "export_csv": "Export CSV",
+    "loading_message": "Please wait while your report is generated...",
+    "loading_hint": "Your report generation might take a while depending on the amount of trades and actions you performed during the selected period.",
+    "select_directory": "Select a directory",
+    "csv_export_error": "There was an error with Export"
+  },
+  "import_data": {
+    "title": "Import Data"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "exchange_balances": {
+      "tooltip": "Aggregate value of all balances in each configured exchange.",
+      "add": "Add an exchange",
+      "title": "exchange"
+    },
+    "blockchain_balances": {
+      "tooltip": "Aggregate value of all configured addresses in each blockchain.",
+      "add": "Add blockchain address",
+      "title": "blockchain"
+    },
+    "manual_balances": {
+      "title": "manual",
+      "card_tooltip": "Aggregate value of manual balances entered. Fiat balances are aggregated in the banks entry.",
+      "tooltip": "Aggregate value of manual balances entered",
+      "add": "Add a manual balance"
+    },
+    "per_asset_balances": {
+      "title": "balance per asset",
+      "search": "Search",
+      "headers": {
+        "asset": "Asset",
+        "amount": "Amount",
+        "value": "{symbol} value",
+        "percentage": "% of net Value"
+      },
+      "total": "Total",
+      "no_search_result": "Your search for \"{search}\" yielded no results."
+    }
+  },
+  "accounts_balances": {
+    "title": "Accounts & Balances"
+  },
+  "api_keys": {
+    "title": "API Keys",
+    "tabs": {
+      "premium": "Rotki Premium",
+      "exchanges": "Exchanges",
+      "external_services": "External Services"
+    }
+  },
+  "sync_indicator": {
+    "menu_tooltip": "View the date of the last balances snapshot | View the date of the last balances snapshot, and the time of the last premium database sync",
+    "snapshot_title": "Last balances snapshot",
+    "never_saved": "Never",
+    "snapshot_tooltip": "This will force taking a snapshot of all your balances, ignoring any cache. Use this sparingly as it may lead to you being rate-limited.",
+    "force_save": "Force save",
+    "last_data_upload": "Last premium database sync",
+    "upload_confirmation": {
+      "cancel": "Cancel",
+      "action": "Push | Pull",
+      "title": "Force Push | Force Pull",
+      "message_upload": "By force pushing, any previous synced data residing in the rotki server will be overwritten. There is no way to recover any overwritten data, or revert this action. Please be careful when performing this action as it may cause unintended data loss. By proceeding you acknowledge that you understand the dangers of using this action",
+      "message_download": "By force pulling, your local database will be replaced with data pulled from the rotki server. There is no way to recover any overwritten data, or revert this action. Please be careful when performing this action as it may cause unintended data loss. By proceeding you acknowledge that you understand the dangers of using this action",
+      "confirm_check": "I understand"
+    }
+  },
+  "input_mode_select": {
+    "metamask_import": {
+      "label": "MetaMask",
+      "missing": "* Importing addresses from MetaMask is disabled. MetaMask could not be detected.",
+      "metamask": "* You will be prompted to import your addresses from MetaMask after pressing save."
+    },
+    "manual_add": {
+      "label": "Manual"
+    },
+    "xpub_add": {
+      "label": "XPUB"
+    }
+  },
+  "loglevel": {
+    "tooltip": "Change the backend loglevel. This action will restart the rotki backend"
+  },
+  "premium_reminder": {
+    "title": "Upgrade to Premium",
+    "buttons": {
+      "close": "Close",
+      "upgrade": "Upgrade"
+    },
+    "description": "rotki is open source software and needs your support! Please consider upgrading to premium by purchasing a premium subscription. This way you can help us further develop the software and you can also enjoy additional premium-only features."
+  },
+  "connection_loading": {
+    "message": "Connecting to rotki backend"
+  },
+  "privacy_notice": {
+    "title": "rotki is a local application that respects your privacy.",
+    "message": "rotki accounts are encrypted using your password and saved in your local filesystem."
+  },
+  "app": {
+    "name": "rotki",
+    "moto": "the opensource portfolio manager that respects your privacy"
+  },
+  "blockchains": {
+    "eth": "Ethereum",
+    "btc": "Bitcoin"
+  },
+  "sync_buttons": {
+    "upload_tooltip": "Push your local database to the server and replace all data there",
+    "download_tooltip": "Pull the saved data from the server and replace your local database",
+    "push": "Push",
+    "pull": "Pull"
   }
 }

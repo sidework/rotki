@@ -1,6 +1,13 @@
 import { BigNumber } from 'bignumber.js';
 
-export interface ApiSupportedAsset {
+export const SYNC_UPLOAD = 'upload';
+export const SYNC_DOWNLOAD = 'download';
+
+const SYNC_ACTIONS = [SYNC_DOWNLOAD, SYNC_UPLOAD] as const;
+
+export type SyncAction = typeof SYNC_ACTIONS[number];
+
+interface ApiSupportedAsset {
   readonly active?: boolean;
   readonly ended?: number;
   readonly name: string;
@@ -52,4 +59,56 @@ export interface Balance {
 
 export interface HasBalance {
   readonly balance: Balance;
+}
+
+// This is equivalent to python's AssetBalance named tuple
+export interface DBAssetBalance {
+  readonly time: number;
+  readonly asset: string;
+  readonly amount: string;
+  readonly usd_value: string;
+}
+
+export interface PeriodicClientQueryResult {
+  readonly lastBalanceSave: number;
+  readonly ethNodeConnection: boolean;
+  readonly historyProcessStartTs: number;
+  readonly historyProcessCurrentTs: number;
+  readonly lastDataUploadTs: number;
+}
+
+export interface NetvalueDataResult {
+  readonly times: number[];
+  readonly data: number[];
+}
+
+export interface SingleAssetBalance {
+  readonly time: number;
+  readonly amount: string;
+  readonly usd_value: string;
+}
+
+export interface VersionCheck {
+  readonly our_version?: string;
+  readonly latest_version?: string;
+  readonly download_url?: string;
+}
+
+export interface GeneralAccountData {
+  readonly address: string;
+  readonly label: string | null;
+  readonly tags: string[] | null;
+}
+
+export interface XpubAccountData {
+  readonly xpub: string;
+  readonly derivationPath: string | null;
+  readonly label: string | null;
+  readonly tags: string[] | null;
+  readonly addresses: GeneralAccountData[] | null;
+}
+
+export interface BtcAccountData {
+  readonly standalone: GeneralAccountData[];
+  readonly xpubs: XpubAccountData[];
 }

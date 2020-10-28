@@ -19,6 +19,7 @@
               :disabled="premium && !edit"
               :error-messages="errorMessages"
               :label="$t('premium_settings.fields.api_key')"
+              @paste="onApiKeyPaste"
             />
             <revealable-input
               v-model="apiSecret"
@@ -26,6 +27,7 @@
               prepend-icon="mdi-lock"
               :disabled="premium && !edit"
               :label="$t('premium_settings.fields.api_secret')"
+              @paste="onApiSecretPaste"
             />
             <div v-if="premium" class="premium-settings__premium-active">
               <v-icon color="success">mdi-check-circle</v-icon>
@@ -87,7 +89,7 @@
         "
         :title="$t('premium_settings.delete_confirmation.title')"
         :message="$t('premium_settings.delete_confirmation.message')"
-        @confirm="remove()"
+        @confirm="remove"
         @cancel="confirmDeletePremium = false"
       />
     </v-row>
@@ -103,6 +105,7 @@ import RevealableInput from '@/components/inputs/RevealableInput.vue';
 import { PremiumCredentialsPayload } from '@/store/session/types';
 import { ActionStatus } from '@/store/types';
 import { SettingsUpdate } from '@/typing/types';
+import { trimOnPaste } from '@/utils/event';
 
 @Component({
   components: {
@@ -132,7 +135,7 @@ export default class PremiumSettings extends Vue {
   username!: string;
 
   setupPremium!: (payload: PremiumCredentialsPayload) => Promise<ActionStatus>;
-  deletePremium!: (username: string) => Promise<ActionStatus>;
+  deletePremium!: () => Promise<ActionStatus>;
   updateSettings!: (settings: SettingsUpdate) => Promise<void>;
 
   private reset() {
@@ -144,6 +147,20 @@ export default class PremiumSettings extends Vue {
   private clearErrors() {
     for (let i = 0; i < this.errorMessages.length; i++) {
       this.errorMessages.pop();
+    }
+  }
+
+  onApiKeyPaste(event: ClipboardEvent) {
+    const paste = trimOnPaste(event);
+    if (paste) {
+      this.apiKey = paste;
+    }
+  }
+
+  onApiSecretPaste(event: ClipboardEvent) {
+    const paste = trimOnPaste(event);
+    if (paste) {
+      this.apiSecret = paste;
     }
   }
 
@@ -168,8 +185,8 @@ export default class PremiumSettings extends Vue {
 
     const payload: PremiumCredentialsPayload = {
       username: this.username,
-      apiKey: this.apiKey,
-      apiSecret: this.apiSecret
+      apiKey: this.apiKey.trim(),
+      apiSecret: this.apiSecret.trim()
     };
     const { success, message } = await this.setupPremium(payload);
     if (!success) {
@@ -188,7 +205,7 @@ export default class PremiumSettings extends Vue {
     if (!this.premium) {
       return;
     }
-    const { success, message } = await this.deletePremium(this.username);
+    const { success, message } = await this.deletePremium();
     if (!success) {
       this.errorMessages.push(
         message ?? this.$tc('premium_settings.error.removing_failed')

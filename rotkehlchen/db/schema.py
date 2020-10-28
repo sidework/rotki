@@ -98,13 +98,17 @@ DB_CREATE_AAVE_EVENTS = """
 CREATE TABLE IF NOT EXISTS aave_events (
     address VARCHAR[42] NOT NULL,
     event_type VARCHAR[10] NOT NULL,
-    asset VARCHAR[12] NOT NULL,
-    amount TEXT NOT NULL,
-    usd_value TEXT NOT NULL,
     block_number INTEGER NOT NULL,
     timestamp INTEGER NOT NULL,
     tx_hash VARCHAR[66] NOT NULL,
     log_index INTEGER NOT NULL,
+    asset1 VARCHAR[12] NOT NULL,
+    asset1_amount TEXT NOT NULL,
+    asset1_usd_value TEXT NOT NULL,
+    asset2 VARCHAR[12],
+    asset2amount_borrowrate_feeamount TEXT,
+    asset2usd_value_accruedinterest_feeusdvalue TEXT,
+    borrow_rate_mode VARCHAR[10],
     PRIMARY KEY (event_type, tx_hash, log_index)
 );
 """
@@ -150,6 +154,28 @@ CREATE TABLE IF NOT EXISTS blockchain_accounts (
     blockchain VARCHAR[24],
     account TEXT NOT NULL PRIMARY KEY,
     label TEXT
+);
+"""
+
+DB_CREATE_XPUBS = """
+CREATE TABLE IF NOT EXISTS xpubs (
+    xpub TEXT NOT NULL,
+    derivation_path TEXT NOT NULL,
+    label TEXT,
+    PRIMARY KEY (xpub, derivation_path)
+);
+"""
+
+DB_CREATE_XPUB_MAPPINGS = """
+CREATE TABLE IF NOT EXISTS xpub_mappings (
+    address TEXT NOT NULL,
+    xpub TEXT NOT NULL,
+    derivation_path TEXT NOT NULL,
+    account_index INTEGER,
+    derived_index INTEGER,
+    FOREIGN KEY(address) REFERENCES blockchain_accounts(account) ON DELETE CASCADE
+    FOREIGN KEY(xpub, derivation_path) REFERENCES xpubs(xpub, derivation_path) ON DELETE CASCADE
+    PRIMARY KEY (address, xpub, derivation_path)
 );
 """
 
@@ -273,7 +299,7 @@ CREATE TABLE IF NOT EXISTS settings (
 DB_SCRIPT_CREATE_TABLES = """
 PRAGMA foreign_keys=off;
 BEGIN TRANSACTION;
-{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
+{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}{}
 COMMIT;
 PRAGMA foreign_keys=on;
 """.format(
@@ -298,4 +324,6 @@ PRAGMA foreign_keys=on;
     DB_CREATE_TAG_MAPPINGS,
     DB_CREATE_AAVE_EVENTS,
     DB_CREATE_YEARN_VAULT_EVENTS,
+    DB_CREATE_XPUBS,
+    DB_CREATE_XPUB_MAPPINGS,
 )

@@ -6,10 +6,10 @@ from web3.datastructures import AttributeDict
 from rotkehlchen.accounting.structures import Balance
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.balances.manual import ManuallyTrackedBalanceWithValue
+from rotkehlchen.chain.bitcoin.xpub import XpubData
 from rotkehlchen.chain.ethereum.aave import (
     AaveBalances,
     AaveBorrowingBalance,
-    AaveEvent,
     AaveHistory,
     AaveLendingBalance,
 )
@@ -21,6 +21,7 @@ from rotkehlchen.chain.ethereum.makerdao.vaults import (
     VaultEvent,
     VaultEventType,
 )
+from rotkehlchen.chain.ethereum.structures import AaveEvent
 from rotkehlchen.chain.ethereum.yearn.vaults import (
     YearnVaultBalance,
     YearnVaultEvent,
@@ -35,6 +36,7 @@ from rotkehlchen.fval import FVal
 from rotkehlchen.serialization.deserialize import deserialize_location_from_db
 from rotkehlchen.typing import (
     AssetMovementCategory,
+    BlockchainAccountData,
     EthereumTransaction,
     EthTokenInfo,
     Location,
@@ -75,7 +77,7 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             'amount': entry.amount,
             'usd_value': entry.usd_value,
         }
-    elif isinstance(entry, (DefiProtocol, MakerDAOVault)):
+    elif isinstance(entry, (DefiProtocol, MakerDAOVault, XpubData)):
         return entry.serialize()
     elif isinstance(entry, (
             Trade,
@@ -88,12 +90,12 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             CompoundBalance,
             YearnVaultEvent,
             YearnVaultBalance,
+            AaveEvent,
     )):
         return process_result(entry.serialize())
     elif isinstance(entry, (
             DBSettings,
             EthTokenInfo,
-            AaveEvent,
             CompoundEvent,
             VersionCheckResult,
             DBSettings,
@@ -106,6 +108,7 @@ def _process_entry(entry: Any) -> Union[str, List[Any], Dict[str, Any], Any]:
             DefiBalance,
             DefiProtocolBalances,
             YearnVaultHistory,
+            BlockchainAccountData,
     )):
         return process_result(entry._asdict())
     elif isinstance(entry, tuple):

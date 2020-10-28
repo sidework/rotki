@@ -16,10 +16,16 @@ export const defaultState: () => SessionState = () => ({
   premium: false,
   premiumSync: false,
   nodeConnection: false,
-  syncConflict: '',
+  syncConflict: {
+    message: '',
+    payload: null
+  },
   tags: {},
   watchers: [],
-  queriedAddresses: {}
+  queriedAddresses: {},
+  ignoredAssets: [],
+  lastBalanceSave: 0,
+  lastDataUpload: 0
 });
 
 export const state: SessionState = defaultState();

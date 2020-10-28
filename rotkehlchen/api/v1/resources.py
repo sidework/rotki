@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from flask import Blueprint, Request, Response, request as flask_request
 from flask_restful import Resource
@@ -16,6 +16,7 @@ from rotkehlchen.api.v1.encoding import (
     AsyncHistoricalQuerySchema,
     AsyncQueryArgumentSchema,
     AsyncTasksQuerySchema,
+    BaseXpubSchema,
     BlockchainAccountsDeleteSchema,
     BlockchainAccountsGetSchema,
     BlockchainAccountsPatchSchema,
@@ -49,14 +50,16 @@ from rotkehlchen.api.v1.encoding import (
     TradeSchema,
     UserActionSchema,
     UserPasswordChangeSchema,
-    UserPremiumKeyRemoveSchema,
+    UserPremiumSyncSchema,
     WatchersAddSchema,
     WatchersDeleteSchema,
     WatchersEditSchema,
+    XpubSchema,
 )
 from rotkehlchen.api.v1.parser import resource_parser
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
+from rotkehlchen.chain.bitcoin.xpub import XpubData
 from rotkehlchen.db.settings import ModifiableDBSettings
 from rotkehlchen.typing import (
     ApiKey,
@@ -77,6 +80,9 @@ from rotkehlchen.typing import (
     TradePair,
     TradeType,
 )
+
+if TYPE_CHECKING:
+    from rotkehlchen.chain.bitcoin.hdkey import HDKey
 
 
 def _combine_data_and_view_args(
@@ -555,11 +561,17 @@ class UserPasswordChangeResource(BaseResource):
 
 
 class UserPremiumKeyResource(BaseResource):
-    delete_schema = UserPremiumKeyRemoveSchema
 
-    @use_kwargs(delete_schema, location='view_args')  # type: ignore
-    def delete(self, name: str) -> Response:
-        return self.rest_api.user_premium_key_remove(name=name)
+    def delete(self) -> Response:
+        return self.rest_api.user_premium_key_remove()
+
+
+class UserPremiumSyncResource(BaseResource):
+    put_schema = UserPremiumSyncSchema()
+
+    @use_kwargs(put_schema, location='json_and_view_args')  # type: ignore
+    def put(self, async_query: bool, action: Literal['upload', 'download']) -> Response:
+        return self.rest_api.sync_data(async_query, action)
 
 
 class StatisticsNetvalueResource(BaseResource):
@@ -713,6 +725,48 @@ class BlockchainsAccountsResource(BaseResource):
         return self.rest_api.remove_blockchain_accounts(
             blockchain=blockchain,
             accounts=accounts,
+            async_query=async_query,
+        )
+
+
+class BTCXpubResource(BaseResource):
+
+    put_schema = XpubSchema()
+    delete_schema = BaseXpubSchema()
+
+    @use_kwargs(put_schema, location='json')  # type: ignore
+    def put(
+            self,
+            xpub: 'HDKey',
+            derivation_path: Optional[str],
+            label: Optional[str],
+            tags: Optional[List[str]],
+            async_query: bool,
+    ) -> Response:
+        return self.rest_api.add_xpub(
+            xpub_data=XpubData(
+                xpub=xpub,
+                derivation_path=derivation_path,
+                label=label,
+                tags=tags,
+            ),
+            async_query=async_query,
+        )
+
+    @use_kwargs(delete_schema, location='json')  # type: ignore
+    def delete(
+            self,
+            xpub: 'HDKey',
+            derivation_path: Optional[str],
+            async_query: bool,
+    ) -> Response:
+        return self.rest_api.delete_xpub(
+            xpub_data=XpubData(
+                xpub=xpub,
+                derivation_path=derivation_path,
+                label=None,
+                tags=None,
+            ),
             async_query=async_query,
         )
 

@@ -30,9 +30,6 @@ WORLD_TO_POLONIEX = {
     'AIR-2': 'AIR',
     # Decentr is DEC-2 for us but DEC in Poloniex
     'DEC-2': 'DEC',
-    # Poloniex listed BTCtalkcoin as BCC as it was its original ticker but the
-    # ticker later changes and it is now known to the world  as TALK
-    'TALK': 'BCC',
     # Poloniex delisted BCH and listed it as BCHABC after the Bitcoin Cash
     # ABC / SV fork. In Rotkehlchen we consider BCH to be the same as BCHABC
     'BCH': 'BCHABC',
@@ -124,6 +121,9 @@ WORLD_TO_KRAKEN = {
     'KSM': 'KSM',
     'CRV': 'CRV',
     'SNX': 'SNX',
+    'FIL': 'FIL',
+    'UNI': 'UNI',
+    'YFI': 'YFI',
 }
 
 WORLD_TO_BINANCE = {
@@ -171,10 +171,13 @@ class Asset():
                 'Tried to initialize an asset out of a non-string identifier',
             )
 
-        if not AssetResolver().is_identifier_canonical(self.identifier):
+        canonical_id = AssetResolver().is_identifier_canonical(self.identifier)
+        if canonical_id is None:
             raise UnknownAsset(self.identifier)
-        data = AssetResolver().get_asset_data(self.identifier)
+        # else let's make sure we got the canonical id in our data struct
+        object.__setattr__(self, 'identifier', canonical_id)
 
+        data = AssetResolver().get_asset_data(self.identifier)
         # Ugly hack to set attributes of a frozen data class as post init
         # https://docs.python.org/3/library/dataclasses.html#frozen-instances
         object.__setattr__(self, 'name', data.name)

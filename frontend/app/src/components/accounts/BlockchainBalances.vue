@@ -2,7 +2,7 @@
   <v-card class="blockchain-balances mt-8">
     <v-card-title>{{ $t('blockchain_balances.title') }}</v-card-title>
     <v-card-text>
-      <v-btn absolute fab top right dark color="primary" @click="newAccount()">
+      <v-btn absolute fab top right color="primary" @click="newAccount()">
         <v-icon>
           mdi-plus
         </v-icon>
@@ -28,14 +28,14 @@
         :title="$t('blockchain_balances.balances.eth')"
         blockchain="ETH"
         :balances="ethAccounts"
-        @editAccount="edit($event)"
+        @edit-account="edit($event)"
       />
       <v-divider />
       <account-balances
         :title="$t('blockchain_balances.balances.btc')"
         blockchain="BTC"
         :balances="btcAccounts"
-        @editAccount="edit($event)"
+        @edit-account="edit($event)"
       />
     </v-card-text>
   </v-card>
@@ -48,8 +48,10 @@ import AccountBalances from '@/components/accounts/AccountBalances.vue';
 import AccountForm from '@/components/accounts/AccountForm.vue';
 import BigDialog from '@/components/dialogs/BigDialog.vue';
 import AssetBalances from '@/components/settings/AssetBalances.vue';
-import { AccountBalance } from '@/model/blockchain-balances';
-import { Account } from '@/typing/types';
+import {
+  AccountWithBalance,
+  BlockchainAccountWithBalance
+} from '@/store/balances/types';
 
 @Component({
   components: {
@@ -63,11 +65,11 @@ import { Account } from '@/typing/types';
   }
 })
 export default class BlockchainBalances extends Vue {
-  ethAccounts!: AccountBalance[];
-  btcAccounts!: AccountBalance[];
-  totals!: AccountBalance[];
+  ethAccounts!: AccountWithBalance[];
+  btcAccounts!: BlockchainAccountWithBalance[];
+  totals!: AccountWithBalance[];
 
-  accountToEdit: Account | null = null;
+  accountToEdit: BlockchainAccountWithBalance | null = null;
   dialogTitle: string = '';
   dialogSubtitle: string = '';
   openDialog: boolean = false;
@@ -80,7 +82,7 @@ export default class BlockchainBalances extends Vue {
     this.openDialog = true;
   }
 
-  edit(account: Account) {
+  edit(account: BlockchainAccountWithBalance) {
     this.accountToEdit = account;
     this.dialogTitle = this.$tc('blockchain_balances.form_dialog.edit_title');
     this.dialogSubtitle = this.$tc(
@@ -90,14 +92,17 @@ export default class BlockchainBalances extends Vue {
   }
 
   async clearDialog() {
-    const form = this.$refs.form as AccountForm;
-    await form.reset();
     this.openDialog = false;
+    setTimeout(async () => {
+      const form = this.$refs.form as AccountForm;
+      await form.reset();
+      this.accountToEdit = null;
+    }, 300);
   }
 
   async save() {
     const form = this.$refs.form as AccountForm;
-    const success = await form.addAccount();
+    const success = await form.save();
     if (success) {
       await this.clearDialog();
     }

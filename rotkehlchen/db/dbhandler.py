@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from json.decoder import JSONDecodeError
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple, Union, cast
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union, cast
 
 from eth_utils import is_checksum_address
 from pysqlcipher3 import dbapi2 as sqlcipher
@@ -15,7 +15,18 @@ from typing_extensions import Literal
 from rotkehlchen.accounting.structures import Balance
 from rotkehlchen.assets.asset import Asset, EthereumToken
 from rotkehlchen.balances.manual import ManuallyTrackedBalance
-from rotkehlchen.chain.ethereum.structures import AaveEvent, YearnVault, YearnVaultEvent
+from rotkehlchen.chain.bitcoin.hdkey import HDKey
+from rotkehlchen.chain.bitcoin.xpub import (
+    XpubData,
+    XpubDerivedAddressData,
+    deserialize_derivation_path_for_db,
+)
+from rotkehlchen.chain.ethereum.structures import (
+    AaveEvent,
+    YearnVault,
+    YearnVaultEvent,
+    aave_event_from_db,
+)
 from rotkehlchen.constants.assets import A_USD, S_BTC, S_ETH
 from rotkehlchen.constants.ethereum import YEARN_VAULTS_PREFIX
 from rotkehlchen.datatyping import BalancesData
@@ -71,6 +82,7 @@ from rotkehlchen.typing import (
     ApiKey,
     ApiSecret,
     BlockchainAccountData,
+    BTCAddress,
     ChecksumEthAddress,
     EthereumTransaction,
     ExternalService,
@@ -636,25 +648,28 @@ class DBHandler:
         self.conn.commit()
         self.update_last_write()
 
-    def add_aave_events(self, address: ChecksumEthAddress, events: List[AaveEvent]) -> None:
+    def add_aave_events(self, address: ChecksumEthAddress, events: Sequence[AaveEvent]) -> None:
         cursor = self.conn.cursor()
         for e in events:
-            event_tuple = (
-                address,
-                e.event_type,
-                e.asset.identifier,
-                str(e.value.amount),
-                str(e.value.usd_value),
-                str(e.block_number),
-                str(e.timestamp),
-                e.tx_hash,
-                e.log_index,
-            )
+            event_tuple = e.to_db_tuple(address)
             try:
                 cursor.execute(
-                    'INSERT INTO '
-                    'aave_events(address, event_type, asset, amount, usd_value, block_number, timestamp, tx_hash, log_index)'  # noqa: E501
-                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    'INSERT INTO aave_events( '
+                    'address, '
+                    'event_type, '
+                    'block_number, '
+                    'timestamp, '
+                    'tx_hash, '
+                    'log_index, '
+                    'asset1, '
+                    'asset1_amount, '
+                    'asset1_usd_value, '
+                    'asset2, '
+                    'asset2amount_borrowrate_feeamount, '
+                    'asset2usd_value_accruedinterest_feeusdvalue, '
+                    'borrow_rate_mode) '
+
+                    'VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ? , ? , ? , ?)',
                     event_tuple,
                 )
             except sqlcipher.IntegrityError:  # pylint: disable=no-member
@@ -662,6 +677,7 @@ class DBHandler:
                     f'Tried to add an aave event that already exists in the DB. '
                     f'Event data: {event_tuple}. Skipping...',
                 )
+                continue
 
         self.conn.commit()
         self.update_last_write()
@@ -669,26 +685,43 @@ class DBHandler:
     def get_aave_events(
             self,
             address: ChecksumEthAddress,
-            atoken: EthereumToken,
+            atoken: Optional[EthereumToken] = None,
     ) -> List[AaveEvent]:
         """Get aave for a single address and a single aToken"""
         cursor = self.conn.cursor()
-        query = cursor.execute(
-            'SELECT event_type, amount, usd_value, block_number, timestamp, tx_hash, log_index, '
-            'asset from aave_events WHERE address=? AND (asset=? OR asset=?)',
-            (address, atoken.identifier, atoken.identifier[1:]),
+        querystr = (
+            'SELECT address, '
+            'event_type, '
+            'block_number, '
+            'timestamp, '
+            'tx_hash, '
+            'log_index, '
+            'asset1, '
+            'asset1_amount, '
+            'asset1_usd_value, '
+            'asset2, '
+            'asset2amount_borrowrate_feeamount, '
+            'asset2usd_value_accruedinterest_feeusdvalue, '
+            'borrow_rate_mode '
+            'FROM aave_events '
         )
+        values: Tuple
+        if atoken is not None:  # when called by blockchain
+            querystr += 'WHERE address = ? AND (asset1=? OR asset1=?);'
+            values = (address, atoken.identifier, atoken.identifier[1:])
+        else:  # called by graph
+            querystr += 'WHERE address = ?;'
+            values = (address,)
+
+        query = cursor.execute(querystr, values)
         events = []
         for result in query:
-            events.append(AaveEvent(
-                event_type=result[0],
-                asset=Asset(result[7]),
-                value=Balance(amount=FVal(result[1]), usd_value=FVal(result[2])),
-                block_number=int(result[3]),
-                timestamp=Timestamp(int(result[4])),
-                tx_hash=result[5],
-                log_index=result[6],
-            ))
+            try:
+                event = aave_event_from_db(result)
+            except DeserializationError:
+                continue  # skip entry. Above function should already log an error
+            events.append(event)
+
         return events
 
     def delete_aave_data(self) -> None:
@@ -928,7 +961,7 @@ class DBHandler:
                 f'Blockchain account/s {[x.address for x in account_data]} already exist',
             )
 
-        insert_tag_mappings(cursor=cursor, data=account_data, object_reference_key='address')
+        insert_tag_mappings(cursor=cursor, data=account_data, object_reference_keys=['address'])
 
         self.conn.commit()
         self.update_last_write()
@@ -967,7 +1000,7 @@ class DBHandler:
             )
             log.error(msg)
             raise AssertionError(msg)
-        insert_tag_mappings(cursor=cursor, data=account_data, object_reference_key='address')
+        insert_tag_mappings(cursor=cursor, data=account_data, object_reference_keys=['address'])
 
         self.conn.commit()
         self.update_last_write()
@@ -1176,7 +1209,7 @@ class DBHandler:
             raise InputError(
                 f'One of the manually tracked balance entries already exists in the DB. {str(e)}',
             )
-        insert_tag_mappings(cursor=cursor, data=data, object_reference_key='label')
+        insert_tag_mappings(cursor=cursor, data=data, object_reference_keys=['label'])
 
         self.conn.commit()
         self.update_last_write()
@@ -1215,7 +1248,7 @@ class DBHandler:
         if cursor.rowcount != len(data):
             msg = 'Tried to edit manually tracked balance entry that did not exist in the DB'
             raise InputError(msg)
-        insert_tag_mappings(cursor=cursor, data=data, object_reference_key='label')
+        insert_tag_mappings(cursor=cursor, data=data, object_reference_keys=['label'])
 
         self.conn.commit()
         self.update_last_write()
@@ -2215,9 +2248,13 @@ class DBHandler:
 
     def ensure_tags_exist(
             self,
-            given_data: Union[List[BlockchainAccountData], List[ManuallyTrackedBalance]],
+            given_data: Union[
+                List[BlockchainAccountData],
+                List[ManuallyTrackedBalance],
+                List[XpubData],
+            ],
             action: Literal['adding', 'editing'],
-            data_type: Literal['blockchain accounts', 'manually tracked balances'],
+            data_type: Literal['blockchain accounts', 'manually tracked balances', 'bitcoin xpub'],
     ) -> None:
         """Make sure that tags included in the data exist in the DB
 
@@ -2241,3 +2278,177 @@ class DBHandler:
                 f'When {action} {data_type}, unknown tags '
                 f'{", ".join(unknown_tags)} were found',
             )
+
+    def add_bitcoin_xpub(self, xpub_data: XpubData) -> None:
+        """Add the xpub to the DB
+
+        May raise:
+        - InputError if the xpub data already exist
+        """
+
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute(
+                'INSERT INTO xpubs(xpub, derivation_path, label) '
+                'VALUES (?, ?, ?)',
+                (
+                    xpub_data.xpub.xpub,
+                    xpub_data.serialize_derivation_path_for_db(),
+                    xpub_data.label,
+                ),
+            )
+        except sqlcipher.IntegrityError:  # pylint: disable=no-member
+            raise InputError(
+                f'Xpub {xpub_data.xpub.xpub} with derivation path '
+                f'{xpub_data.derivation_path} is already tracked',
+            )
+        self.conn.commit()
+        self.update_last_write()
+
+    def delete_bitcoin_xpub(self, xpub_data: XpubData) -> None:
+        """Deletes an xpub from the DB. Also deletes all derived addresses and mappings
+
+        May raise:
+        - InputError if the xpub does not exist in the DB
+        """
+        cursor = self.conn.cursor()
+        query = cursor.execute(
+            'SELECT COUNT(*) FROM xpubs WHERE xpub=? AND derivation_path IS ?;',
+            (xpub_data.xpub.xpub, xpub_data.serialize_derivation_path_for_db()),
+        )
+        if query.fetchone()[0] == 0:
+            derivation_str = (
+                'no derivation path' if xpub_data.derivation_path is None else
+                f'derivation path {xpub_data.derivation_path}'
+            )
+            raise InputError(
+                f'Tried to remove non existing xpub {xpub_data.xpub.xpub} '
+                f'with {derivation_str}',
+            )
+
+        # Delete the tag mappings for all derived addresses
+        cursor.execute(
+            'DELETE FROM tag_mappings WHERE '
+            'object_reference IN ('
+            'SELECT address from xpub_mappings WHERE xpub=? and derivation_path IS ?);',
+            (
+                xpub_data.xpub.xpub,
+                xpub_data.serialize_derivation_path_for_db(),
+            ),
+        )
+        # Delete the tag mappings for the xpub itself (type ignore is for xpub is not None
+        key = xpub_data.xpub.xpub + xpub_data.serialize_derivation_path_for_db()  # type: ignore
+        cursor.execute('DELETE FROM tag_mappings WHERE object_reference=?', (key,))
+        # Delete any derived addresses
+        cursor.execute(
+            'DELETE FROM blockchain_accounts WHERE blockchain=? AND account IN ('
+            'SELECT address from xpub_mappings WHERE xpub=? and derivation_path IS ?);',
+            (
+                SupportedBlockchain.BITCOIN.value,
+                xpub_data.xpub.xpub,
+                xpub_data.serialize_derivation_path_for_db(),
+            ),
+        )
+        # And then finally delete the xpub itself
+        cursor.execute(
+            'DELETE FROM xpubs WHERE xpub=? AND derivation_path IS ?;',
+            (xpub_data.xpub.xpub, xpub_data.serialize_derivation_path_for_db()),
+        )
+
+        self.conn.commit()
+        self.update_last_write()
+
+    def get_bitcoin_xpub_data(self) -> List[XpubData]:
+        cursor = self.conn.cursor()
+        query = cursor.execute(
+            'SELECT A.xpub, A.derivation_path, A.label, group_concat(B.tag_name,",") '
+            'FROM xpubs as A LEFT OUTER JOIN tag_mappings AS B ON '
+            'B.object_reference = A.xpub || A.derivation_path GROUP BY A.xpub || A.derivation_path;',  # noqa: E501
+        )
+        result = []
+        for entry in query:
+            tags = deserialize_tags_from_db(entry[3])
+            result.append(XpubData(
+                xpub=HDKey.from_xpub(entry[0], path='m'),
+                derivation_path=deserialize_derivation_path_for_db(entry[1]),
+                label=entry[2],
+                tags=tags,
+            ))
+
+        return result
+
+    def get_last_xpub_derived_indices(self, xpub_data: XpubData) -> Tuple[int, int]:
+        """Get the last known receiving and change derived indices from the given xpub"""
+        cursor = self.conn.cursor()
+        result = cursor.execute(
+            'SELECT MAX(derived_index) from xpub_mappings WHERE xpub=? AND '
+            'derivation_path IS ? AND account_index=0;',
+            (xpub_data.xpub.xpub, xpub_data.serialize_derivation_path_for_db()),
+        )
+        result = result.fetchall()
+        last_receiving_idx = int(result[0][0]) if result[0][0] is not None else 0
+        result = cursor.execute(
+            'SELECT MAX(derived_index) from xpub_mappings WHERE xpub=? AND '
+            'derivation_path IS ? AND account_index=1;',
+            (xpub_data.xpub.xpub, xpub_data.serialize_derivation_path_for_db()),
+        )
+        result = result.fetchall()
+        last_change_idx = int(result[0][0]) if result[0][0] is not None else 0
+        return last_receiving_idx, last_change_idx
+
+    def get_addresses_to_xpub_mapping(
+            self,
+            addresses: List[BTCAddress],
+    ) -> Dict[BTCAddress, XpubData]:
+        cursor = self.conn.cursor()
+
+        data = {}
+        for address in addresses:
+            result = cursor.execute(
+                'SELECT B.address, A.xpub, A.derivation_path FROM xpubs as A '
+                'LEFT OUTER JOIN xpub_mappings as B '
+                'ON B.xpub = A.xpub AND B.derivation_path IS A.derivation_path '
+                'WHERE B.address=?;', (address,),
+            )
+            result = result.fetchall()
+            if len(result) == 0:
+                continue
+
+            data[result[0][0]] = XpubData(
+                xpub=HDKey.from_xpub(result[0][1], path='m'),
+                derivation_path=deserialize_derivation_path_for_db(result[0][2]),
+            )
+
+        return data
+
+    def ensure_xpub_mappings_exist(
+            self,
+            xpub: str,
+            derivation_path: Optional[str],
+            derived_addresses_data: List[XpubDerivedAddressData],
+    ) -> None:
+        """Create if not existing the mappings between the addresses and the xpub"""
+        tuples = [
+            (
+                x.address,
+                xpub,
+                '' if derivation_path is None else derivation_path,
+                x.account_index,
+                x.derived_index,
+            ) for x in derived_addresses_data
+        ]
+        cursor = self.conn.cursor()
+        for entry in tuples:
+            try:
+                cursor.execute(
+                    'INSERT INTO xpub_mappings'
+                    '(address, xpub, derivation_path, account_index, derived_index) '
+                    'VALUES (?, ?, ?, ?, ?)',
+                    entry,
+                )
+            except sqlcipher.IntegrityError:  # pylint: disable=no-member
+                # mapping already exists
+                continue
+
+        self.conn.commit()
+        self.update_last_write()

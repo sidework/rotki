@@ -1,9 +1,10 @@
 import sortBy from 'lodash/sortBy';
-import { AssetBalance } from '@/model/blockchain-balances';
 import { Location } from '@/services/types-common';
 import { SupportedAsset } from '@/services/types-model';
 import { getters } from '@/store/balances/getters';
-import { BalanceState } from '@/store/balances/types';
+import { AssetBalance, BalanceState } from '@/store/balances/types';
+import { SessionState } from '@/store/session/types';
+import { RotkehlchenState } from '@/store/types';
 import { bigNumberify } from '@/utils/bignumbers';
 import { stub } from '../../../common/utils';
 
@@ -73,7 +74,16 @@ describe('balances:getters', () => {
     });
 
     const actualResult = sortBy(
-      getters.aggregatedBalances(state, mockGetters, stub(), stub()),
+      getters.aggregatedBalances(
+        state,
+        mockGetters,
+        stub<RotkehlchenState>({
+          session: stub<SessionState>({
+            ignoredAssets: []
+          })
+        }),
+        stub()
+      ),
       'asset'
     );
 

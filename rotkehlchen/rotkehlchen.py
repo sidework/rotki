@@ -6,7 +6,7 @@ import os
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union, overload
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union, overload
 
 import gevent
 from gevent.lock import Semaphore
@@ -15,6 +15,7 @@ from typing_extensions import Literal
 from rotkehlchen.accounting.accountant import Accountant
 from rotkehlchen.assets.resolver import AssetResolver
 from rotkehlchen.balances.manual import account_for_manually_tracked_balances
+from rotkehlchen.chain.bitcoin.xpub import XpubManager
 from rotkehlchen.chain.ethereum.manager import (
     ETHEREUM_NODES_TO_CONNECT_AT_START,
     EthereumManager,
@@ -64,6 +65,9 @@ from rotkehlchen.typing import (
 from rotkehlchen.usage_analytics import maybe_submit_usage_analytics
 from rotkehlchen.user_messages import MessagesAggregator
 from rotkehlchen.utils.misc import combine_stat_dicts, dict_get_sumof, merge_dicts
+
+if TYPE_CHECKING:
+    from rotkehlchen.chain.bitcoin.xpub import XpubData
 
 logger = logging.getLogger(__name__)
 log = RotkehlchenLogsAdapter(logger)
@@ -118,13 +122,18 @@ class Rotkehlchen():
         self.coingecko = Coingecko()
         self.icon_manager = IconManager(data_dir=self.data_dir, coingecko=self.coingecko)
         self.greenlet_manager.spawn_and_track(
+            after_seconds=None,
             task_name='periodically_query_icons_until_all_cached',
             method=self.icon_manager.periodically_query_icons_until_all_cached,
             batch_size=ICONS_BATCH_SIZE,
             sleep_time_secs=ICONS_QUERY_SLEEP,
         )
         # Initialize the Inquirer singleton
-        Inquirer(data_dir=self.data_dir, cryptocompare=self.cryptocompare)
+        Inquirer(
+            data_dir=self.data_dir,
+            cryptocompare=self.cryptocompare,
+            coingecko=self.coingecko,
+        )
         # Keeps how many trades we have found per location. Used for free user limiting
         self.actions_per_location: Dict[str, Dict[Location, int]] = {
             'trade': defaultdict(int),
@@ -192,11 +201,17 @@ class Rotkehlchen():
             # the premium credentials were given by the user
             if create_new:
                 raise
+            self.msg_aggregator.add_error(
+                'Tried to synchronize the database from remote but the local password '
+                'does not match the one the remote DB has. Please change the password '
+                'to be the same as the password of the account you want to sync from ',
+            )
             # else let's just continue. User signed in succesfully, but he just
             # has unauthenticable/invalid premium credentials remaining in his DB
 
         settings = self.get_settings()
         self.greenlet_manager.spawn_and_track(
+            after_seconds=None,
             task_name='submit_usage_analytics',
             method=maybe_submit_usage_analytics,
             should_submit=settings.submit_usage_analytics,
@@ -263,6 +278,7 @@ class Rotkehlchen():
             'Logging out user',
             user=user,
         )
+        self.greenlet_manager.clear()
         del self.chain_manager
         self.exchange_manager.delete_all_exchanges()
 
@@ -303,14 +319,9 @@ class Rotkehlchen():
 
         self.data.db.set_rotkehlchen_premium(credentials)
 
-    def delete_premium_credentials(self, name: str) -> Tuple[bool, str]:
+    def delete_premium_credentials(self) -> Tuple[bool, str]:
         """Deletes the premium credentials for Rotki"""
-        success: bool
         msg = ''
-
-        if name != self.data.username:
-            msg = f'Provided user "{name}" is not the logged in user'
-            success = False
 
         success = self.data.db.del_rotkehlchen_premium()
         if success is False:
@@ -330,14 +341,59 @@ class Rotkehlchen():
     def main_loop(self) -> None:
         """Rotki main loop that fires often and manages many different tasks
 
-        Each task remembers the last time it run sucesfully and know how often it
+        Each task remembers the last time it run successfully and know how often it
         should run. So each task manages itself.
         """
+        # super hacky -- organize better when recurring tasks are implemented
+        # https://github.com/rotki/rotki/issues/1106
+        xpub_derivation_scheduled = False
         while self.shutdown_event.wait(MAIN_LOOP_SECS_DELAY) is not True:
             if self.user_is_logged_in:
                 log.debug('Main loop start')
                 self.premium_sync_manager.maybe_upload_data_to_server()
+                if not xpub_derivation_scheduled:
+                    # 1 minute in the app's startup try to derive new xpub addresses
+                    self.greenlet_manager.spawn_and_track(
+                        after_seconds=60.0,
+                        task_name='Derive new xpub addresses',
+                        method=XpubManager(self.chain_manager).check_for_new_xpub_addresses,
+                    )
+                    xpub_derivation_scheduled = True
                 log.debug('Main loop end')
+
+    def get_blockchain_account_data(
+            self,
+            blockchain: SupportedBlockchain,
+    ) -> Union[List[BlockchainAccountData], Dict[str, Any]]:
+        account_data = self.data.db.get_blockchain_account_data(blockchain)
+        if blockchain != SupportedBlockchain.BITCOIN:
+            return account_data
+
+        xpub_data = self.data.db.get_bitcoin_xpub_data()
+        addresses_to_account_data = {x.address: x for x in account_data}
+        address_to_xpub_mappings = self.data.db.get_addresses_to_xpub_mapping(
+            list(addresses_to_account_data.keys()),  # type: ignore
+        )
+
+        xpub_mappings: Dict['XpubData', List[BlockchainAccountData]] = {}
+        for address, xpub_entry in address_to_xpub_mappings.items():
+            if xpub_entry not in xpub_mappings:
+                xpub_mappings[xpub_entry] = []
+            xpub_mappings[xpub_entry].append(addresses_to_account_data[address])
+
+        data: Dict[str, Any] = {'standalone': [], 'xpubs': []}
+        # Add xpub data
+        for xpub_entry in xpub_data:
+            data_entry = xpub_entry.serialize()
+            addresses = xpub_mappings.get(xpub_entry, None)
+            data_entry['addresses'] = addresses if addresses and len(addresses) != 0 else None
+            data['xpubs'].append(data_entry)
+        # Add standalone addresses
+        for account in account_data:
+            if account.address not in address_to_xpub_mappings:
+                data['standalone'].append(account)
+
+        return data
 
     def add_blockchain_accounts(
             self,
@@ -834,6 +890,7 @@ class Rotkehlchen():
             result['eth_node_connection'] = self.chain_manager.ethereum.web3_mapping.get(NodeName.OWN, None) is not None  # noqa : E501
             result['history_process_start_ts'] = self.accountant.started_processing_timestamp
             result['history_process_current_ts'] = self.accountant.currently_processing_timestamp
+            result['last_data_upload_ts'] = Timestamp(self.premium_sync_manager.last_data_upload_ts)  # noqa : E501
         return result
 
     def shutdown(self) -> None:

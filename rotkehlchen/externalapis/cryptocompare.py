@@ -12,7 +12,7 @@ from typing_extensions import Literal
 
 from rotkehlchen.assets.asset import Asset
 from rotkehlchen.constants import ZERO
-from rotkehlchen.constants.assets import A_BTC, A_DAI, A_USD
+from rotkehlchen.constants.assets import A_BTC, A_DAI, A_USD, A_USDT, A_WETH
 from rotkehlchen.db.dbhandler import DBHandler
 from rotkehlchen.errors import (
     NoPriceForGivenTimestamp,
@@ -43,72 +43,90 @@ PairCacheKey = NewType('PairCacheKey', T_PairCacheKey)
 RATE_LIMIT_MSG = 'You are over your rate limit please upgrade your account!'
 CRYPTOCOMPARE_QUERY_RETRY_TIMES = 10
 CRYPTOCOMPARE_SPECIAL_CASES_MAPPING = {
-    Asset('TLN'): Asset('WETH'),
-    Asset('BLY'): Asset('USDT'),
+    Asset('TLN'): A_WETH,
+    Asset('BLY'): A_USDT,
     Asset('cDAI'): A_DAI,
     Asset('cBAT'): Asset('BAT'),
     Asset('cREP'): Asset('REP'),
     Asset('cSAI'): Asset('SAI'),
     Asset('cUSDC'): Asset('USDC'),
-    Asset('cUSDT'): Asset('USDT'),
+    Asset('cUSDT'): A_USDT,
     Asset('cWBTC'): Asset('WBTC'),
+    Asset('cUNI'): Asset('UNI'),
     Asset('cZRX'): Asset('ZRX'),
-    Asset('ADADOWN'): Asset('USDT'),
-    Asset('ADAUP'): Asset('USDT'),
-    Asset('BNBDOWN'): Asset('USDT'),
-    Asset('BNBUP'): Asset('USDT'),
-    Asset('BTCDOWN'): Asset('USDT'),
-    Asset('BTCUP'): Asset('USDT'),
-    Asset('ETHDOWN'): Asset('USDT'),
-    Asset('ETHUP'): Asset('USDT'),
-    Asset('EOSDOWN'): Asset('USDT'),
-    Asset('EOSUP'): Asset('USDT'),
-    Asset('DOTDOWN'): Asset('USDT'),
-    Asset('DOTUP'): Asset('USDT'),
-    Asset('LTCDOWN'): Asset('USDT'),
-    Asset('LTCUP'): Asset('USDT'),
-    Asset('TRXDOWN'): Asset('USDT'),
-    Asset('TRXUP'): Asset('USDT'),
-    Asset('XRPDOWN'): Asset('USDT'),
-    Asset('XRPUP'): Asset('USDT'),
-    Asset('DEXT'): Asset('USDT'),
-    Asset('DOS'): Asset('USDT'),
-    Asset('GEEQ'): Asset('USDT'),
-    Asset('LINKDOWN'): Asset('USDT'),
-    Asset('LINKUP'): Asset('USDT'),
-    Asset('XTZDOWN'): Asset('USDT'),
-    Asset('XTZUP'): Asset('USDT'),
-    Asset('STAKE'): Asset('USDT'),
-    Asset('MCB'): Asset('USDT'),
-    Asset('TRB'): Asset('USDT'),
-    Asset('YFI'): Asset('USDT'),
-    Asset('YAM'): Asset('USDT'),
-    Asset('DEC-2'): Asset('USDT'),
-    Asset('ORN'): Asset('USDT'),
-    Asset('PERX'): Asset('USDT'),
-    Asset('PRQ'): Asset('USDT'),
-    Asset('RING'): Asset('USDT'),
-    Asset('SBREE'): Asset('USDT'),
-    Asset('YFII'): Asset('USDT'),
-    Asset('BZRX'): Asset('USDT'),
-    Asset('CREAM'): Asset('USDT'),
-    Asset('ADEL'): Asset('USDT'),
-    Asset('ANK'): Asset('USDT'),
-    Asset('CORN'): Asset('USDT'),
-    Asset('SAL'): Asset('USDT'),
-    Asset('CRT'): Asset('USDT'),
-    Asset('FSW'): Asset('USDT'),
-    Asset('JFI'): Asset('USDT'),
-    Asset('PEARL'): Asset('USDT'),
-    Asset('TAI'): Asset('USDT'),
-    Asset('YFL'): Asset('USDT'),
-    Asset('TRUMPWIN'): Asset('USDT'),
-    Asset('TRUMPLOSE'): Asset('USDT'),
-    Asset('KLV'): Asset('USDT'),
+    Asset('ADADOWN'): A_USDT,
+    Asset('ADAUP'): A_USDT,
+    Asset('BNBDOWN'): A_USDT,
+    Asset('BNBUP'): A_USDT,
+    Asset('BTCDOWN'): A_USDT,
+    Asset('BTCUP'): A_USDT,
+    Asset('ETHDOWN'): A_USDT,
+    Asset('ETHUP'): A_USDT,
+    Asset('EOSDOWN'): A_USDT,
+    Asset('EOSUP'): A_USDT,
+    Asset('DOTDOWN'): A_USDT,
+    Asset('DOTUP'): A_USDT,
+    Asset('LTCDOWN'): A_USDT,
+    Asset('LTCUP'): A_USDT,
+    Asset('TRXDOWN'): A_USDT,
+    Asset('TRXUP'): A_USDT,
+    Asset('XRPDOWN'): A_USDT,
+    Asset('XRPUP'): A_USDT,
+    Asset('DEXT'): A_USDT,
+    Asset('DOS'): A_USDT,
+    Asset('GEEQ'): A_USDT,
+    Asset('LINKDOWN'): A_USDT,
+    Asset('LINKUP'): A_USDT,
+    Asset('XTZDOWN'): A_USDT,
+    Asset('XTZUP'): A_USDT,
+    Asset('STAKE'): A_USDT,
+    Asset('MCB'): A_USDT,
+    Asset('TRB'): A_USDT,
+    Asset('YFI'): A_USDT,
+    Asset('YAM'): A_USDT,
+    Asset('DEC-2'): A_USDT,
+    Asset('ORN'): A_USDT,
+    Asset('PERX'): A_USDT,
+    Asset('PRQ'): A_USDT,
+    Asset('RING'): A_USDT,
+    Asset('SBREE'): A_USDT,
+    Asset('YFII'): A_USDT,
+    Asset('BZRX'): A_USDT,
+    Asset('CREAM'): A_USDT,
+    Asset('ADEL'): A_USDT,
+    Asset('ANK'): A_USDT,
+    Asset('CORN'): A_USDT,
+    Asset('SAL'): A_USDT,
+    Asset('CRT'): A_USDT,
+    Asset('FSW'): A_USDT,
+    Asset('JFI'): A_USDT,
+    Asset('PEARL'): A_USDT,
+    Asset('TAI'): A_USDT,
+    Asset('YFL'): A_USDT,
+    Asset('TRUMPWIN'): A_USDT,
+    Asset('TRUMPLOSE'): A_USDT,
+    Asset('KLV'): A_USDT,
     Asset('KRT'): Asset('KRW'),
-    Asset('RVC'): Asset('USDT'),
-    Asset('SDT'): Asset('USDT'),
-    Asset('CHI'): Asset('USDT'),
+    Asset('RVC'): A_USDT,
+    Asset('SDT'): A_USDT,
+    Asset('CHI'): A_USDT,
+    Asset('BAKE'): Asset('BNB'),
+    Asset('BURGER'): Asset('BNB'),
+    Asset('CAKE'): Asset('BNB'),
+    Asset('BREE'): A_USDT,
+    Asset('GHST'): A_USDT,
+    Asset('MEXP'): A_USDT,
+    Asset('POLS'): A_USDT,
+    Asset('RARI'): A_USDT,
+    Asset('VALUE'): A_USDT,
+    Asset('$BASED'): A_WETH,
+    Asset('DPI'): A_WETH,
+    Asset('JRT'): A_USDT,
+    Asset('PICKLE'): A_USDT,
+    Asset('FILDOWN'): A_USDT,
+    Asset('FILUP'): A_USDT,
+    Asset('YFIDOWN'): A_USDT,
+    Asset('YFIUP'): A_USDT,
 }
 CRYPTOCOMPARE_SPECIAL_CASES = CRYPTOCOMPARE_SPECIAL_CASES_MAPPING.keys()
 
@@ -642,23 +660,37 @@ class Cryptocompare(ExternalServiceWithApiKey):
         except UnsupportedAsset as e:
             raise PriceQueryUnsupportedAsset(e.asset_name)
 
+        price = Price(ZERO)
         # all data are sorted and timestamps are always increasing by 1 hour
         # find the closest entry to the provided timestamp
         if timestamp >= data[0].time:
+            index_in_bounds = True
             # convert_to_int can't raise here due to its input
             index = convert_to_int((timestamp - data[0].time) / 3600, accept_only_exact=False)
-            # print("timestamp: {} index: {} data_length: {}".format(timestamp, index, len(data)))
-            diff = abs(data[index].time - timestamp)
-            if index + 1 <= len(data) - 1:
-                diff_p1 = abs(data[index + 1].time - timestamp)
-                if diff_p1 < diff:
-                    index = index + 1
+            if index > len(data) - 1:  # index out of bounds
+                # Try to see if index - 1 is there and if yes take it
+                if index > len(data):
+                    index = index - 1
+                else:  # give up. This happened: https://github.com/rotki/rotki/issues/1534
+                    log.error(
+                        f'Expected data index in cryptocompare historical hour price '
+                        f'not found. Queried price of: {from_asset.identifier} in '
+                        f'{to_asset.identifier} at {timestamp}. Data '
+                        f'index: {index}. Length of returned data: {len(data)}. '
+                        f'https://github.com/rotki/rotki/issues/1534. Attempting other methods...',
+                    )
+                    index_in_bounds = False
 
-            if data[index].high is None or data[index].low is None:
-                # If we get some None in the hourly set price to 0 so that we check alternatives
-                price = Price(ZERO)
-            else:
-                price = Price((data[index].high + data[index].low) / 2)
+            if index_in_bounds:
+                diff = abs(data[index].time - timestamp)
+                if index + 1 <= len(data) - 1:
+                    diff_p1 = abs(data[index + 1].time - timestamp)
+                    if diff_p1 < diff:
+                        index = index + 1
+
+                if data[index].high is not None and data[index].low is not None:
+                    price = Price((data[index].high + data[index].low) / 2)
+
         else:
             # no price found in the historical data from/to asset, try alternatives
             price = Price(ZERO)

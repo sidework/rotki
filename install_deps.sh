@@ -5,7 +5,7 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # the temp directory used, within $DIR
 # omit the -p parameter to create a temporal directory in the default location
-WORK_DIR=`mktemp -d -p "$DIR"`
+WORK_DIR=$(mktemp -d -p "$DIR")
 
 # check if tmp dir was created
 if [[ ! "$WORK_DIR" || ! -d "$WORK_DIR" ]]; then
@@ -33,11 +33,11 @@ SQLCIPHER_EXISTS=$(ldconfig -p | grep libsqlcipher)
 echo "SQLCIPHER_EXISTS: $SQLCIPHER_EXISTS";
 if [[ $SQLCIPHER_EXISTS == "" ]]; then
     echo "Downloading and compiling sqlcipher";
-    # Go into the directory and build sqlciper
-    cd $WORK_DIR
+    # Go into the directory and build sqlcipher
+    cd "$WORK_DIR" || exit 1
     git clone https://github.com/sqlcipher/sqlcipher
-    cd sqlcipher
-    git checkout v4.0.1
+    cd sqlcipher || exit 1
+    git checkout v4.4.0
     ./configure \
 	--enable-tempstore=yes \
 	CFLAGS="-DSQLITE_HAS_CODEC -DSQLITE_ENABLE_FTS3 -DSQLITE_ENABLE_FTS3_PARENTHESIS" \
@@ -45,5 +45,5 @@ if [[ $SQLCIPHER_EXISTS == "" ]]; then
     make
     sudo make install
 
-    cd $DIR
+    cd "$DIR" || exit 1
 fi

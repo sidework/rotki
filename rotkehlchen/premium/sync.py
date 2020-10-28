@@ -2,7 +2,7 @@ import base64
 import logging
 import shutil
 from enum import Enum
-from typing import NamedTuple, Optional
+from typing import Any, Dict, NamedTuple, Optional, Tuple
 
 from typing_extensions import Literal
 
@@ -32,12 +32,14 @@ class SyncCheckResult(NamedTuple):
     can_sync: CanSync
     # If result is ASK_USER, what should the message be?
     message: str
+    payload: Optional[Dict[str, Any]]
 
 
 class PremiumSyncManager():
 
     def __init__(self, data: DataHandler, password: str) -> None:
-        self.last_data_upload_ts = 0
+        # Initialize this with the value saved in the DB
+        self.last_data_upload_ts = data.db.get_last_data_upload_ts()
         self.data = data
         self.password = password
         self.premium: Optional[Premium] = None
@@ -52,7 +54,7 @@ class PremiumSyncManager():
         """
         log.debug('can sync data from server -- start')
         if self.premium is None:
-            return SyncCheckResult(can_sync=CanSync.NO, message='')
+            return SyncCheckResult(can_sync=CanSync.NO, message='', payload=None)
 
         b64_encoded_data, our_hash = self.data.compress_and_encrypt_db(self.password)
 
@@ -60,14 +62,14 @@ class PremiumSyncManager():
             metadata = self.premium.query_last_data_metadata()
         except RemoteError as e:
             log.debug('can sync data from server failed', error=str(e))
-            return SyncCheckResult(can_sync=CanSync.NO, message='')
+            return SyncCheckResult(can_sync=CanSync.NO, message='', payload=None)
 
         if new_account:
-            return SyncCheckResult(can_sync=CanSync.YES, message='')
+            return SyncCheckResult(can_sync=CanSync.YES, message='', payload=None)
 
         if not self.data.db.get_premium_sync():
-            # If it's not a new account and the db setting for premium syncin is off stop
-            return SyncCheckResult(can_sync=CanSync.NO, message='')
+            # If it's not a new account and the db setting for premium syncing is off stop
+            return SyncCheckResult(can_sync=CanSync.NO, message='', payload=None)
 
         log.debug(
             'CAN_PULL',
@@ -77,36 +79,38 @@ class PremiumSyncManager():
         if our_hash == metadata.data_hash:
             log.debug('sync from server stopped -- same hash')
             # same hash -- no need to get anything
-            return SyncCheckResult(can_sync=CanSync.NO, message='')
+            return SyncCheckResult(can_sync=CanSync.NO, message='', payload=None)
 
         our_last_write_ts = self.data.db.get_last_write_ts()
-        if our_last_write_ts >= metadata.last_modify_ts:
-            # Local DB is newer than Server DB
-            log.debug('sync from server stopped -- local DB more recent than remote')
-            return SyncCheckResult(can_sync=CanSync.NO, message='')
-
         data_bytes_size = len(base64.b64decode(b64_encoded_data))
-        if data_bytes_size > metadata.data_size:
-            message_prefix = (
-                'Detected newer remote database BUT with smaller size than the local one. '
+
+        local_more_recent = our_last_write_ts >= metadata.last_modify_ts
+        local_bigger = data_bytes_size >= metadata.data_size
+
+        if local_more_recent and local_bigger:
+            log.debug('sync from server stopped -- local is both newer and bigger')
+            return SyncCheckResult(can_sync=CanSync.NO, message='', payload=None)
+
+        if local_more_recent is False:  # remote is more recent
+            message = (
+                'Detected remote database with more recent modification timestamp '
+                'than the local one. '
             )
+        else:  # remote is bigger
+            message = 'Detected remote database with bigger size than the local one. '
 
-        else:
-            message_prefix = 'Detected newer remote database. '
-
-        message = (
-            f'{message_prefix}'
-            f'Local size: {data_bytes_size} Remote size: {metadata.data_size} '
-            f'Local last modified time: {timestamp_to_date(our_last_write_ts)} '
-            f'Remote last modified time: {timestamp_to_date(metadata.last_modify_ts)} '
-            f'Would you like to replace the local DB with the remote one?'
-        )
         return SyncCheckResult(
             can_sync=CanSync.ASK_USER,
             message=message,
+            payload={
+                'local_size': data_bytes_size,
+                'remote_size': metadata.data_size,
+                'local_last_modified': timestamp_to_date(our_last_write_ts),
+                'remote_last_modified': timestamp_to_date(metadata.last_modify_ts),
+            },
         )
 
-    def _sync_data_from_server_and_replace_local(self) -> bool:
+    def _sync_data_from_server_and_replace_local(self) -> Tuple[bool, str]:
         """
         Performs syncing of data from server and replaces local db
 
@@ -122,7 +126,11 @@ class PremiumSyncManager():
             result = self.premium.pull_data()
         except RemoteError as e:
             log.debug('sync from server -- pulling failed.', error=str(e))
-            return False
+            return False, f'Pulling failed: {str(e)}'
+
+        if result['data'] is None:
+            log.debug('sync from server -- no data found.')
+            return False, 'No data found'
 
         try:
             self.data.decompress_and_decrypt_db(self.password, result['data'])
@@ -132,50 +140,53 @@ class PremiumSyncManager():
                 'the server. Make sure to use the same password as when the account was created.',
             )
 
-        return True
+        return True, ''
 
-    def maybe_upload_data_to_server(self) -> None:
+    def maybe_upload_data_to_server(self, force_upload: bool = False) -> bool:
         # if user has no premium do nothing
         if self.premium is None:
-            return
+            return False
 
         # upload only once per hour
         diff = ts_now() - self.last_data_upload_ts
-        if diff < 3600:
-            return
+        if diff < 3600 and not force_upload:
+            return False
 
-        b64_encoded_data, our_hash = self.data.compress_and_encrypt_db(self.password)
         try:
             metadata = self.premium.query_last_data_metadata()
         except RemoteError as e:
-            log.debug(
-                'upload to server stopped -- query last metadata failed',
-                error=str(e),
-            )
-            return
+            log.debug('upload to server -- fetching metadata error', error=str(e))
+            return False
+        b64_encoded_data, our_hash = self.data.compress_and_encrypt_db(self.password)
 
         log.debug(
             'CAN_PUSH',
             ours=our_hash,
             theirs=metadata.data_hash,
         )
-        if our_hash == metadata.data_hash:
+        if our_hash == metadata.data_hash and not force_upload:
             log.debug('upload to server stopped -- same hash')
             # same hash -- no need to upload anything
-            return
+            return False
 
         our_last_write_ts = self.data.db.get_last_write_ts()
-        if our_last_write_ts <= metadata.last_modify_ts:
+        if our_last_write_ts <= metadata.last_modify_ts and not force_upload:
             # Server's DB was modified after our local DB
-            log.debug('upload to server stopped -- remote db more recent than local')
-            return
+            log.debug(
+                f'upload to server stopped -- remote db({metadata.last_modify_ts}) '
+                f'more recent than local({our_last_write_ts})',
+            )
+            return False
 
         data_bytes_size = len(base64.b64decode(b64_encoded_data))
-        if data_bytes_size < metadata.data_size:
+        if data_bytes_size < metadata.data_size and not force_upload:
             # Let's be conservative.
             # TODO: Here perhaps prompt user in the future
-            log.debug('upload to server stopped -- remote db bigger than local')
-            return
+            log.debug(
+                f'upload to server stopped -- remote db({metadata.data_size}) '
+                f'bigger than local({data_bytes_size})',
+            )
+            return False
 
         try:
             self.premium.upload_data(
@@ -186,12 +197,26 @@ class PremiumSyncManager():
             )
         except RemoteError as e:
             log.debug('upload to server -- upload error', error=str(e))
-            return
+            return False
 
         # update the last data upload value
         self.last_data_upload_ts = ts_now()
         self.data.db.update_last_data_upload_ts(self.last_data_upload_ts)
         log.debug('upload to server -- success')
+        return True
+
+    def sync_data(self, action: Literal['upload', 'download']) -> Tuple[bool, str]:
+        assert self.premium, 'This function has to be called with a not None premium'
+        msg = ''
+
+        if action == 'upload':
+            success = self.maybe_upload_data_to_server(force_upload=True)
+
+            if not success:
+                msg = 'Upload failed'
+            return success, msg
+
+        return self._sync_data_from_server_and_replace_local()
 
     def try_premium_at_start(
             self,
@@ -250,21 +275,22 @@ class PremiumSyncManager():
         result = self._can_sync_data_from_server(new_account=create_new)
         if result.can_sync == CanSync.ASK_USER:
             if sync_approval == 'unknown':
-                log.info('DB data at server newer than local')
-                raise RotkehlchenPermissionError(result.message)
+                log.info('Remote DB is possibly newer. Ask user.')
+                raise RotkehlchenPermissionError(result.message, result.payload)
             elif sync_approval == 'yes':
                 log.info('User approved data sync from server')
-                if self._sync_data_from_server_and_replace_local():
+                if self._sync_data_from_server_and_replace_local()[0]:
                     if create_new:
                         # if we successfully synced data from the server and this is
                         # a new account, make sure the api keys are properly stored
                         # in the DB
                         self.data.db.set_rotkehlchen_premium(self.premium.credentials)
+
             else:
                 log.debug('Could sync data from server but user refused')
         elif result.can_sync == CanSync.YES:
             log.info('User approved data sync from server')
-            if self._sync_data_from_server_and_replace_local():
+            if self._sync_data_from_server_and_replace_local()[0]:
                 if create_new:
                     # if we successfully synced data from the server and this is
                     # a new account, make sure the api keys are properly stored

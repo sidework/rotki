@@ -17,10 +17,25 @@ export interface SessionState {
   privacyMode: boolean;
   scrambleData: boolean;
   nodeConnection: boolean;
-  syncConflict: string;
+  syncConflict: SyncConflict;
   tags: Tags;
   watchers: Watcher<WatcherTypes>[];
   queriedAddresses: QueriedAddresses;
+  ignoredAssets: string[];
+  lastBalanceSave: number;
+  lastDataUpload: number;
+}
+
+export interface SyncConflictPayload {
+  readonly localSize: string;
+  readonly remoteSize: string;
+  readonly localLastModified: string;
+  readonly remoteLastModified: string;
+}
+
+export interface SyncConflict {
+  readonly message: string;
+  readonly payload: SyncConflictPayload | null;
 }
 
 export interface PremiumCredentialsPayload {

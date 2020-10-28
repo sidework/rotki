@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from rotkehlchen.assets.asset import Asset
@@ -33,7 +33,14 @@ class UnableToDecryptRemoteData(Exception):
 
 
 class RotkehlchenPermissionError(Exception):
-    pass
+    """Raised at login if we need additional data from the user
+
+    The payload contains information to be shown to the user by the frontend so
+    they can decide what to do
+    """
+    def __init__(self, error_message: str, payload: Optional[Dict[str, Any]]) -> None:
+        self.error_message = error_message
+        self.message_payload = payload if payload is not None else {}
 
 
 class SystemPermissionError(Exception):
@@ -101,4 +108,13 @@ class BlockchainQueryError(Exception):
 
     For example a VM Execution error in ethereum contract calls
     """
+    pass
+
+
+class XPUBError(Exception):
+    """Error XPUB Parsing and address derivation"""
+    pass
+
+
+class EncodingError(Exception):
     pass

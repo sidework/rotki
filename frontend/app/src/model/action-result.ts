@@ -33,17 +33,11 @@ export interface DBSettings {
   readonly frontend_settings: string;
 }
 
-export interface ApiKey {
+interface ApiKey {
   api_key: string;
 }
 
 export interface ExternalServiceKeys {
   etherscan?: ApiKey;
   cryptocompare?: ApiKey;
-}
-
-export interface ApiAccountData {
-  readonly address: string;
-  readonly label: string | null;
-  readonly tags: string[] | null;
 }

@@ -18,11 +18,11 @@ export class RotkiApp {
   }
 
   closePremiumOverlay() {
-    cy.get('.account-management__premium-dialog__title', {
+    cy.get('.premium-reminder__title', {
       timeout: 10000
     }).should('include.text', 'Upgrade to Premium');
-    cy.get('.account-management__premium-dialog__buttons__cancel').click();
-    cy.get('.account-management__premium-dialog').should('not.be.visible');
+    cy.get('.premium-reminder__buttons__cancel').click();
+    cy.get('.premium-reminder').should('not.be.visible');
   }
 
   login(username: string, password: string = '1234') {
@@ -59,5 +59,12 @@ export class RotkiApp {
       })
       .then(() => cb())
       .catch(() => cb());
+  }
+
+  drawerIsVisible(isVisible: boolean) {
+    cy.get('.account-management__loading').should('not.be.visible');
+    cy.get('.app__navigation-drawer').should(
+      isVisible ? 'be.visible' : 'not.be.visible'
+    );
   }
 }

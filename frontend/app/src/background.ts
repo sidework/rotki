@@ -1,19 +1,25 @@
 import path from 'path';
 import {
   app,
-  protocol,
   BrowserWindow,
-  Menu,
-  ipcMain,
-  shell,
   dialog,
+  ipcMain,
+  Menu,
+  MenuItem,
   MenuItemConstructorOptions,
-  MenuItem
+  protocol,
+  shell
 } from 'electron';
 import installExtension, { VUEJS_DEVTOOLS } from 'electron-devtools-installer';
 import windowStateKeeper from 'electron-window-state';
 import { createProtocol } from 'vue-cli-plugin-electron-builder/lib';
+import { startHttp, stopHttp } from '@/electron-main/http';
+import { IPC_RESTART_BACKEND } from '@/electron-main/ipc';
+import { selectPort } from '@/electron-main/port-utils';
+import { assert } from '@/utils/assertions';
+import { CRITICAL, DEBUG, Level } from '@/utils/log-level';
 import PyHandler from './py-handler';
+import Timeout = NodeJS.Timeout;
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
 const isMac = process.platform === 'darwin';
@@ -232,7 +238,12 @@ function createWindow() {
     win = null;
   });
 
-  pyHandler.createPyProc(win).then(() => {
+  let logLevel: Level = DEBUG;
+  if (!isDevelopment) {
+    logLevel = CRITICAL;
+  }
+
+  pyHandler.createPyProc(win, logLevel).then(() => {
     pyHandler.listenForMessages();
   });
 }
@@ -329,6 +340,39 @@ app.on('ready', async () => {
   ipcMain.on('OPEN_DIRECTORY', async (event, args) => {
     const directory = await select(args, 'openDirectory');
     event.sender.send('OPEN_DIRECTORY', directory);
+  });
+  let importTimeout: Timeout;
+  ipcMain.on('METAMASK_IMPORT', async (event, _args) => {
+    try {
+      const port = startHttp(
+        addresses => event.sender.send('METAMASK_IMPORT', { addresses }),
+        await selectPort(40000)
+      );
+      await shell.openExternal(`http://localhost:${port}`);
+      if (importTimeout) {
+        clearTimeout(importTimeout);
+      }
+      importTimeout = setTimeout(() => {
+        stopHttp();
+        event.sender.send('METAMASK_IMPORT', { error: 'waiting timeout' });
+      }, 120000);
+    } catch (e) {
+      event.sender.send('METAMASK_IMPORT', { error: e.message });
+    }
+  });
+
+  ipcMain.on(IPC_RESTART_BACKEND, async (event, args) => {
+    let success = false;
+    try {
+      assert(win);
+      await pyHandler.exitPyProc(true);
+      await pyHandler.createPyProc(win, args);
+      success = true;
+    } catch (e) {
+      console.error(e);
+    }
+
+    event.sender.send(IPC_RESTART_BACKEND, success);
   });
   createWindow();
 });

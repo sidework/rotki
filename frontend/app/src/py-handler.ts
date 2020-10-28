@@ -1,13 +1,12 @@
 import { ChildProcess, execFile, spawn } from 'child_process';
 import * as fs from 'fs';
-import { default as net } from 'net';
 import * as path from 'path';
 import stream from 'stream';
 import { app, App, BrowserWindow, ipcMain } from 'electron';
 import tasklist from 'tasklist';
+import { DEFAULT_PORT, selectPort } from '@/electron-main/port-utils';
 import { assert } from '@/utils/assertions';
-
-const DEFAULT_PORT = 4242;
+import { Level } from '@/utils/log-level';
 
 async function streamToString(givenStream: stream.Readable): Promise<string> {
   const bufferChunks: Buffer[] = [];
@@ -102,13 +101,13 @@ export default class PyHandler {
     this.app.quit();
   }
 
-  async createPyProc(window: BrowserWindow) {
+  async createPyProc(window: BrowserWindow, level?: Level) {
     if (process.env.SKIP_PYTHON_BACKEND) {
       this.logToFile('Skipped starting python sub-process');
       return;
     }
 
-    const port = await this.selectPort();
+    const port = await selectPort();
     const backendUrl = process.env.VUE_APP_BACKEND_URL;
     if (port !== DEFAULT_PORT && backendUrl && typeof backendUrl === 'string') {
       const portSeparator = backendUrl.lastIndexOf(':');
@@ -125,6 +124,10 @@ export default class PyHandler {
     this._port = port;
     const args: string[] = [];
     this.loadArgumentsFromFile(args);
+
+    if (level) {
+      args.push('--loglevel', level);
+    }
 
     if (this.guessPackaged()) {
       this.startProcessPackaged(port, args);
@@ -175,25 +178,35 @@ export default class PyHandler {
     this.logToFile('The Python sub-process was not successfully started');
   }
 
-  async exitPyProc() {
+  async exitPyProc(restart: boolean = false) {
     this.logToFile('Exiting the application');
     if (this.rpcFailureNotifier) {
       clearInterval(this.rpcFailureNotifier);
     }
     if (process.platform === 'win32') {
-      await this.terminateWindowsProcesses();
-    } else {
-      const client = this.childProcess;
-      if (client) {
-        client.kill();
+      return this.terminateWindowsProcesses(restart);
+    }
+    const client = this.childProcess;
+    if (client) {
+      return this.terminateBackend(client);
+    }
+  }
+
+  private terminateBackend = (client: ChildProcess) =>
+    new Promise((resolve, reject) => {
+      client.on('exit', () => {
         this.logToFile(
           `The Python sub-process was terminated successfully (${client.killed})`
         );
+        resolve();
         this.childProcess = undefined;
         this._port = undefined;
-      }
-    }
-  }
+      });
+      client.on('error', e => {
+        reject(e);
+      });
+      client.kill();
+    });
 
   private guessPackaged() {
     const path = PyHandler.packagedBackendPath();
@@ -206,36 +219,6 @@ export default class PyHandler {
   private static packagedBackendPath() {
     const resources = process.resourcesPath ? process.resourcesPath : __dirname;
     return path.join(resources, PyHandler.PY_DIST_FOLDER);
-  }
-
-  private checkAvailability(port: number): Promise<number> {
-    return new Promise<number>((resolve, reject) => {
-      const server = net.createServer();
-      server.unref();
-      server.on('error', reject);
-      server.listen(port, () => {
-        const address = server.address();
-        server.close();
-        if (address && typeof address !== 'string') {
-          resolve(address.port);
-        } else {
-          reject(new Error(`Invalid Address value ${address}`));
-        }
-      });
-    });
-  }
-
-  private async selectPort(): Promise<number> {
-    for (let portNumber = DEFAULT_PORT; portNumber <= 65535; portNumber++) {
-      try {
-        return await this.checkAvailability(portNumber);
-      } catch (e) {
-        if (!['EADDRINUSE', 'EACCES'].includes(e.code)) {
-          throw e;
-        }
-      }
-    }
-    throw new Error('no free ports found');
   }
 
   private setFailureNotification(
@@ -289,10 +272,12 @@ export default class PyHandler {
       );
     }
 
+    const allArgs = defaultArgs.concat(args);
     this.logToFile(
-      `Starting non-packaged python subprocess: python ${defaultArgs.join(' ')}`
+      `Starting non-packaged python subprocess: python ${allArgs.join(' ')}`
     );
-    this.childProcess = spawn('python', defaultArgs.concat(args));
+
+    this.childProcess = spawn('python', allArgs);
   }
 
   private startProcessPackaged(port: number, args: string[]) {
@@ -322,7 +307,7 @@ export default class PyHandler {
     this.childProcess = execFile(executable, args);
   }
 
-  private async terminateWindowsProcesses() {
+  private async terminateWindowsProcesses(restart: boolean) {
     // For win32 we got two problems:
     // 1. pyProc.kill() does not work due to SIGTERM not really being a signal
     //    in Windows
@@ -364,14 +349,24 @@ export default class PyHandler {
 
     const taskKill = spawn('taskkill', args);
 
-    taskKill.on('exit', () => {
-      this.logToFile('Call to taskkill exited');
-      app.exit();
-    });
+    return new Promise(resolve => {
+      taskKill.on('exit', () => {
+        this.logToFile('Call to taskkill exited');
+        if (!restart) {
+          app.exit();
+        }
+        resolve();
+      });
 
-    taskKill.on('error', err => {
-      this.logToFile(`Call to taskkill failed:\n\n ${err}`);
-      app.exit();
+      taskKill.on('error', err => {
+        this.logToFile(`Call to taskkill failed:\n\n ${err}`);
+        if (!restart) {
+          app.exit();
+        }
+        resolve();
+      });
+
+      setTimeout(() => resolve, 15000);
     });
   }
 

@@ -204,7 +204,7 @@ class TradesHistorian():
                     # For the vaults since we can't get historical values of vault tokens
                     # yet, for the purposes of the tax report count everything as USD
                     defi_events.append(DefiEvent(
-                        timestamp=ts_now(),
+                        timestamp=Timestamp(end_ts - 1),
                         event_type=DefiEventType.YEARN_VAULTS_PNL,
                         asset=A_USD,
                         amount=vault_history.profit_loss.usd_value,
@@ -220,7 +220,11 @@ class TradesHistorian():
                 to_timestamp=end_ts,
             )
             for event in compound_history['events']:
-                if event.event_type != 'liquidation' and event.realized_pnl.amount == ZERO:
+                skip_event = (
+                    event.event_type != 'liquidation' and
+                    (event.realized_pnl is None or event.realized_pnl.amount == ZERO)
+                )
+                if skip_event:
                     continue  # skip events with no realized profit/loss
 
                 if event.event_type == 'redeem':
@@ -262,6 +266,7 @@ class TradesHistorian():
         aave = self.chain_manager.aave
         if aave is not None and has_premium:
             mapping = aave.get_history(
+                given_defi_balances=self.chain_manager.defi_balances,
                 addresses=self.chain_manager.queried_addresses_for_module('aave'),
                 reset_db_data=False,
                 from_timestamp=start_ts,
@@ -286,15 +291,33 @@ class TradesHistorian():
                         ))
                         total_amount_per_token[event.asset] += event.value.amount
 
-                for token, balance in aave_history.total_earned.items():
+                for token, balance in aave_history.total_earned_interest.items():
                     # Αdd an extra event per token per address for the remaining not paid amount
                     if token in total_amount_per_token:
                         defi_events.append(DefiEvent(
                             timestamp=now,
                             event_type=DefiEventType.AAVE_LOAN_INTEREST,
-                            asset=event.asset,
+                            asset=token,
                             amount=balance.amount - total_amount_per_token[token],
                         ))
+
+                # Add all losses from aave borrowing/liquidations
+                for asset, balance in aave_history.total_lost.items():
+                    defi_events.append(DefiEvent(
+                        timestamp=now,
+                        event_type=DefiEventType.AAVE_LOSS,
+                        asset=asset,
+                        amount=balance.amount,
+                    ))
+
+                # Add earned assets from aave liquidations
+                for asset, balance in aave_history.total_earned_liquidations.items():
+                    defi_events.append(DefiEvent(
+                        timestamp=now,
+                        event_type=DefiEventType.AAVE_LOAN_INTEREST,
+                        asset=asset,
+                        amount=balance.amount,
+                    ))
 
         history.sort(key=lambda trade: action_get_timestamp(trade))
         return (

@@ -52,7 +52,8 @@ fi
 rm -rf build rotkehlchen_py_dist
 pyinstaller --noconfirm --clean --distpath rotkehlchen_py_dist rotkehlchen.spec
 
-export ROTKEHLCHEN_VERSION=$(python setup.py --version)
+ROTKEHLCHEN_VERSION=$(python setup.py --version)
+export ROTKEHLCHEN_VERSION
 
 if [[ $? -ne 0 ]]; then
     echo "package.sh - ERROR: pyinstaller step failed"
@@ -72,10 +73,17 @@ fi
 cd frontend/app || exit 1
 
 # Let's make sure all npm dependencies are installed.
+echo "Installing node dependencies"
 npm ci
 if [[ $? -ne 0 ]]; then
-    echo "package.sh - ERROR: npm ci step failed"
-    exit 1
+    echo "Verifying npm cache"
+    npm cache verify
+    echo "Attempting node installation again"
+    npm ci
+    if [[ $? -ne 0 ]]; then
+      echo "package.sh - ERROR: npm ci step failed"
+      exit 1
+    fi
 fi
 
 # Finally run the packaging
@@ -132,11 +140,29 @@ cd frontend/app/dist || exit 1
 if [[ "$PLATFORM" == "linux" ]]; then
   generate_checksum "$PLATFORM" "*AppImage" APPIMAGE_CHECKSUM
   generate_checksum "$PLATFORM" "*.tar.xz" TAR_CHECKSUM
+
+  if [[ -n "${CI-}" ]]; then
+    echo "::set-output name=binary::$GENERATED_APPIMAGE"
+    echo "::set-output name=binary_name::${GENERATED_APPIMAGE##*/}"
+    echo "::set-output name=binary_checksum::$APPIMAGE_CHECKSUM"
+    echo "::set-output name=binary_checksum_name::${APPIMAGE_CHECKSUM##*/}"
+    echo "::set-output name=archive_checksum::$TAR_CHECKSUM"
+    echo "::set-output name=archive_checksum_name::${TAR_CHECKSUM##*/}"
+  fi
+
   export APPIMAGE_CHECKSUM
   export TAR_CHECKSUM
 elif [[ "$PLATFORM" == "darwin" ]]; then
   generate_checksum "$PLATFORM" "*.dmg" DMG_CHECKSUM
   generate_checksum "$PLATFORM" "*.zip" ZIP_CHECKSUM
+
+  if [[ -n "${CI-}" ]]; then
+    echo "::set-output name=binary_checksum::$DMG_CHECKSUM"
+    echo "::set-output name=binary_checksum_name::${DMG_CHECKSUM##*/}"
+    echo "::set-output name=archive_checksum::$ZIP_CHECKSUM"
+    echo "::set-output name=archive_checksum_name::${ZIP_CHECKSUM##*/}"
+  fi
+
   export DMG_CHECKSUM
   export ZIP_CHECKSUM
 fi

@@ -89,6 +89,7 @@ def deserialize_timestamp_from_date(
         date: Optional[str],
         formatstr: str,
         location: str,
+        skip_milliseconds: bool = False,
 ) -> Timestamp:
     """Deserializes a timestamp from a date entry depending on the format str
 
@@ -106,6 +107,14 @@ def deserialize_timestamp_from_date(
         raise DeserializationError(
             f'Failed to deserialize a timestamp from a {type(date)} entry in {location}',
         )
+
+    if skip_milliseconds:
+        # Seems that poloniex added milliseconds in their timestamps.
+        # https://github.com/rotki/rotki/issues/1631
+        # We don't deal with milliseconds in Rotki times so we can safely remove it
+        splits = date.split('.', 1)
+        if len(splits) == 2:
+            date = splits[0]
 
     if formatstr == 'iso8601':
         return iso8601ts_to_timestamp(date)
@@ -125,7 +134,12 @@ def deserialize_timestamp_from_poloniex_date(date: str) -> Timestamp:
 
     Can throw DeserializationError if the data is not as expected
     """
-    return deserialize_timestamp_from_date(date, '%Y-%m-%d %H:%M:%S', 'poloniex')
+    return deserialize_timestamp_from_date(
+        date,
+        '%Y-%m-%d %H:%M:%S',
+        'poloniex',
+        skip_milliseconds=True,
+    )
 
 
 def deserialize_timestamp_from_kraken(time: Union[str, FVal, int]) -> Timestamp:
@@ -180,6 +194,27 @@ def deserialize_timestamp_from_binance(time: int) -> Timestamp:
 def deserialize_fval(amount: AcceptableFValInitInput) -> FVal:
     try:
         result = FVal(amount)
+    except ValueError as e:
+        raise DeserializationError(f'Failed to deserialize value entry: {str(e)}')
+
+    return result
+
+
+def deserialize_optional_fval(
+        value: Optional[AcceptableFValInitInput],
+        name: str,
+        location: str,
+) -> FVal:
+    """
+    Deserializes an FVal from a field that was optional and if None raises DeserializationError
+    """
+    if value is None:
+        raise DeserializationError(
+            f'Failed to deserialize value entry for {name} during {location} since null was given',
+        )
+
+    try:
+        result = FVal(value)
     except ValueError as e:
         raise DeserializationError(f'Failed to deserialize value entry: {str(e)}')
 
@@ -481,6 +516,29 @@ def deserialize_hex_color_code(symbol: str) -> HexColorCode:
 
 def deserialize_ethereum_address(symbol: str) -> ChecksumEthAddress:
     return ChecksumEthAddress(HexAddress(HexStr(symbol)))
+
+
+def deserialize_int_from_hex(symbol: str, location: str) -> int:
+    """Takes a hex string and turns it into an integer. Some apis returns 0x as
+    a hex int and this may be an error. So we handle this as return 0 here.
+
+    May Raise:
+    - DeserializationError if the given data are in an unexpected format.
+    """
+    if not isinstance(symbol, str):
+        raise DeserializationError('Expected hex string but got {type(symbol)} at {location}')
+
+    if symbol == '0x':
+        return 0
+
+    try:
+        result = int(symbol, 16)
+    except ValueError:
+        raise DeserializationError(
+            f'Could not turn string "{symbol}" into an integer at {location}',
+        )
+
+    return result
 
 
 def deserialize_int_from_hex_or_int(symbol: Union[str, int], location: str) -> int:
